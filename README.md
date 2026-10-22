@@ -30,8 +30,10 @@ The microphone needs HTTPS (or localhost). On iOS, audio starts only after a tap
 
 ### Deploy to GitHub Pages
 
-`.github/workflows/pages.yml` builds and deploys on every push to `main`.
-Enable it once under **Settings → Pages → Source: GitHub Actions**.
+`.github/workflows/pages.yml` runs lint, tests and the build on every push to
+`main`, then publishes `dist/` to the `gh-pages` branch. Pages serves that branch
+(**Settings → Pages → Source: Deploy from a branch → `gh-pages` / root**).
+Live at <https://ajaranbior.github.io/tonemi/>.
 
 ### Shadowing a YouTube video
 

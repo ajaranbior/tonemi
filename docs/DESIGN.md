@@ -50,10 +50,24 @@ normalisation would hide exactly the errors you care about.
 
 ### 3.1 Tone drills
 
-- **Item bank built on real words**, not nonsense syllables: for every disyllabic combo
-  (4 tones × 5 incl. neutral = **20 combos**) and a set of trisyllabic patterns, pick
-  common words (e.g. 飞机 1-1, 中国 1-2, 你好 3-3 → 2-3, 东西 1-0 …). Monosyllables for
-  isolation warm-up only.
+- **Item bank built on real words**, not nonsense syllables: every disyllabic combo
+  (4 tones × 5 incl. neutral = **20 combos**) and the trisyllabic patterns
+  (4 × 4 × 5 = 80, most common first), e.g. 飞机 1-1, 中国 1-2, 你好 3-3 → 2-3, 东西 1-0.
+  Monosyllables for isolation warm-up only.
+- **Many different words per combo** (target 10–20 each), so you learn the pitch
+  pattern rather than memorising a word's melody. Items are tagged by phonetic
+  makeup and served in stages:
+  1. *Sonorant-heavy* first (m/n/l/r/w/y initials, e.g. 妈妈, 毛衣, 名人) — voicing is
+     continuous across the boundary, so the pitch line is unbroken and the
+     transition between the two tones is fully visible.
+  2. Then *mixed*, including aspirated/fricative initials (e.g. 吃饭, 出租, 喝茶), where
+     the voicing gap makes it harder to hold the target.
+  3. Shuffled within a combo, never the same word twice in a row.
+- **Trisyllabic 3-3-3 by structure**: 展览馆 ([2-2]-3) vs 小老虎 (3-[2-3]) — same
+  tones, different sandhi because of word structure.
+- The bank is generated: a script takes a frequency-ranked word list (HSK) + pinyin,
+  computes surface tones with sandhi, buckets by combo and phonetic tags, and
+  intersects with available audio (§3.1.1).
 - **Exercise variants**
   - *Echo*: hear → repeat → overlay.
   - *Hum-back*: hum the melody without segments (isolates pitch from articulation —
@@ -66,24 +80,32 @@ normalisation would hide exactly the errors you care about.
 - **Tone-pair matrix**: a 4×5 heatmap of your accuracy per combo; a simple spaced-
   repetition scheduler picks the weakest combos more often.
 
-**Reference audio options** (in order of preference):
+#### 3.1.1 Reference audio — free sources only (Mainland Putonghua)
 
-| Source | Quality | Notes |
-|---|---|---|
-| Your own curated native recordings | best | a tutor/friend recording ~100 words covers all combos |
-| Forvo API | native, variable | paid API; per-word coverage good for common words; check caching terms |
-| Neural TTS (Azure / Google zh-CN voices) | very natural now | pre-generate & cache; SSML phoneme tags to force the right reading; verify each item's contour once |
-| Tone Perfect (MSU) | native, clean | **monosyllables only**, 6 speakers, non-commercial licence — good for isolation warm-ups |
+| Source | What | Licence | Use |
+|---|---|---|---|
+| [audio-cmn](https://github.com/hugolpz/audio-cmn) (built on Shtooka recordings) | native speakers: ~5.6k HSK words + all ~1,700 toned syllables | CC BY-SA (check repo) | **primary source for word drills** |
+| Tone Perfect (Michigan State) | 410 syllables × 4 tones × 6 native speakers | non-commercial | isolated-tone warm-ups, several voices |
+| Wikimedia Commons / Lingua Libre | native word recordings, mixed coverage | CC BY-SA | gap filling |
+| Mozilla Common Voice zh-CN | native read sentences, many speakers | CC0 | read-aloud references, future classifier training |
+| Azure neural TTS, free tier | ~0.5 M chars/month — the whole word bank is a few thousand | free tier | fill gaps, extra voices (male/female), sentences |
+| `edge-tts` (Python) | same Microsoft neural voices, no key | unofficial endpoint | quick offline generation for personal use |
+| Browser `speechSynthesis` | OS-dependent quality | — | **no**: its audio can't be captured, so no pitch overlay |
 
-Practical plan: TTS for breadth, cached and spot-checked by the analysis pipeline
-itself (if a TTS item's contour doesn't match its expected tones, flag it), plus
-your own native recordings where TTS is weak.
+Plan: a one-off build script assembles the item bank from audio-cmn first, then
+generates TTS clips for any gaps. Every clip goes through our own pitch analysis,
+and clips whose contour doesn't match the expected tones are flagged and dropped.
+Output: static Opus files (~10–20 KB each, a few thousand → tens of MB) shipped
+with the app, so there is no runtime TTS dependency.
+
+Forvo is skipped (paid API).
 
 ### 3.2 Read-aloud
 
 1. Paste text (or pick a passage).
-2. Text → pinyin with polyphone handling (`pypinyin`, or `g2pW` for better polyphones),
-   then apply sandhi: 3-3, 一, 不, and neutral-tone words. Show *expected surface tones*,
+2. Text → pinyin with polyphone handling (`pinyin-pro` in the browser; `pypinyin` /
+   `g2pW` in the local helper), then apply Mainland sandhi: 3-3 (by prosodic
+   grouping), 一, 不, and neutral-tone words per 现代汉语词典 conventions. Show *expected surface tones*,
    letting you toggle "show / hide" so you're reading characters, not pinyin.
 3. Record → forced alignment → per-syllable recognised tone vs expected.
 4. Output: per-syllable colour (ok / borderline / wrong), sentence contour plot, and
@@ -137,23 +159,43 @@ Combine into 0–100 but always show the components; the components are the feed
   (karaoke-style).
 - Progress: tone-pair heatmap, score trends per mode.
 
-## 7. Architecture
+## 7. Architecture — static-first, optional local helper
+
+Decisions: **Mainland Putonghua**, runs locally / on GitHub Pages, free resources only.
 
 ```
-web (TypeScript, React + Vite, PWA)
+web (TypeScript, React + Vite, PWA)  — deployable to GitHub Pages, no server
  ├─ audio/      capture, AudioWorklet, live F0 (pitchy), playback & time-stretch
  ├─ analysis/   normalisation, segmentation (drills), features, template scoring
+ ├─ g2p/        pinyin-pro + Mainland sandhi rules
  ├─ viz/        canvas pitch plot
- └─ storage     IndexedDB (recordings, progress) — local-first
+ ├─ public/audio/  pre-built item bank (Opus) + manifest.json
+ └─ storage     IndexedDB (recordings, progress) — local-first, nothing leaves the device
 
-api (Python, FastAPI) — optional, for heavy lifting
- ├─ /f0         parselmouth / torchcrepe accurate F0
- ├─ /align      forced alignment (MFA or wav2vec2 CTC)
- ├─ /g2p        pypinyin + sandhi
- ├─ /tts        Azure/Google TTS with cache
- ├─ /transcribe Whisper / FunASR
- └─ /fetch      yt-dlp (personal use)
+helper (Python, FastAPI) — optional, runs on localhost; the web app detects it
+ ├─ /align      forced alignment (wav2vec2 CTC via torchaudio)
+ ├─ /transcribe faster-whisper / FunASR when a video has no subtitles
+ ├─ /tts        edge-tts / Azure free tier for arbitrary read-aloud text
+ └─ /fetch      yt-dlp audio + subtitles (personal use)
+
+scripts/ (Python, run once) — builds the item bank from audio-cmn + TTS gap filling
 ```
+
+### What runs where, and how heavy it is
+
+| Feature | GitHub Pages only | Cost |
+|---|---|---|
+| Live pitch trace, calibration, record/playback | ✅ | tiny: YIN/McLeod on 16 kHz frames is <1 % CPU |
+| Tone drills + scoring + heatmap | ✅ | tiny; item bank is static files (tens of MB, cached by the service worker) |
+| Read-aloud: expected tones (g2p + sandhi) | ✅ | `pinyin-pro` is a few hundred KB |
+| Read-aloud / shadowing: syllable alignment | ⚠️ possible in-browser (CTC model via onnxruntime-web, ~100 MB one-off download, a few seconds per sentence) | better done by the helper |
+| Shadowing with your own file + `.srt`/`.vtt` | ✅ (browser decodes mp3/m4a/webm/mp4 audio) | needs alignment as above |
+| Auto-transcribe a video with no subs | ⚠️ whisper-base in browser is slow | helper: faster-whisper `small` on CPU runs around real time on a laptop |
+| YouTube link import | ❌ (CORS/ToS) | helper with yt-dlp — or run yt-dlp yourself and drop the file in |
+| Reference audio for arbitrary read-aloud text | ❌ (no free browser TTS we can analyse) | helper: edge-tts |
+
+The helper's main cost is the Python install (torch ≈ 1–2 GB on disk); RAM use
+stays at a few GB at most. No GPU needed.
 
 - Keep `analysis/` pure TS with no DOM dependency so it can move into a mobile app
   unchanged.
@@ -164,17 +206,16 @@ api (Python, FastAPI) — optional, for heavy lifting
 
 ## 8. Roadmap
 
-| Phase | Deliverable | Why first |
+| Phase | Deliverable | Needs helper? |
 |---|---|---|
-| **0** | Calibration + live pitch visualiser + record/playback with overlay of a loaded reference | Already useful on its own; validates the F0 pipeline |
-| **1** | Tone drills: item bank (20 combos), cached TTS references, segmentation by *N*, template scoring, tone-pair heatmap | Core of the app; no ASR needed |
-| **2** | Read-aloud: g2p + sandhi, forced alignment backend, per-syllable report | Adds the backend |
-| **3** | Shadowing: file + subs, line looping, alignment-based comparison; yt-dlp import | Reuses phase 2 alignment |
-| **4** | Learned tone classifier with context, SRS, mobile wrapper | Once there is data and usage |
+| **0** | Calibration + live pitch visualiser + record/playback with overlay of a loaded reference | no |
+| **1** | Tone drills: item bank builder (audio-cmn + TTS gaps, many words per combo), segmentation by *N*, template scoring, tone-pair heatmap | no |
+| **2** | Read-aloud: g2p + sandhi in browser, alignment, per-syllable report | yes (in-browser alignment later) |
+| **3** | Shadowing: file + subs, line looping, alignment-based comparison; yt-dlp import | yes |
+| **4** | Learned tone classifier with context, SRS, mobile wrapper | — |
 
 ## 9. Open questions
 
-- Which reference voice(s) — TTS vendor, and do you have access to a native speaker
-  to record ~100 items?
-- Local-only (runs on your machine with a Python backend) vs hosted?
-- Mainland vs Taiwan standard (affects neutral tone frequency and some readings)?
+- Licence of audio-cmn content (CC BY-SA) means the published item bank must keep
+  attribution and share-alike — fine for a personal/open-source app.
+- Front-end framework: React assumed; Svelte would be lighter if preferred.

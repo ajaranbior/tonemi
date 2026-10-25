@@ -73,7 +73,7 @@ function paint(
   g.clearRect(0, 0, w, h)
 
   const left = 22
-  const top = labels.length ? 40 : 6
+  const top = labels.length ? 52 : 6
   const bottom = 6
   const plotH = h - top - bottom
   const x = (t: number) => left + (t / Math.max(duration, 0.1)) * (w - left - 6)
@@ -149,35 +149,38 @@ function paint(
 
   g.textBaseline = 'alphabetic'
   for (const l of labels) {
-    g.font = '600 14px system-ui, sans-serif'
+    g.font = '600 18px system-ui, sans-serif'
     g.fillStyle = l.tone !== undefined ? css(`--t${l.tone}`) : css('--fg')
-    g.fillText(l.text, x(l.t), 15)
+    g.fillText(l.text, x(l.t), 20)
     if (l.sub) {
       if (l.ok === undefined) {
-        g.font = '11px system-ui, sans-serif'
+        g.font = '12px system-ui, sans-serif'
         g.fillStyle = css('--muted')
       } else {
-        g.font = '700 15px system-ui, sans-serif'
+        g.font = '700 17px system-ui, sans-serif'
         g.fillStyle = l.ok ? css('--good') : css('--bad')
       }
-      if (l.subTone === undefined) g.fillText(l.sub, x(l.t), 33)
+      if (l.subTone === undefined) g.fillText(l.sub, x(l.t), 43)
       else {
         // text + icon, centred together
-        const gw = 24
+        const scale = 1.2
+        const gw = 24 * scale
         const tw = g.measureText(l.sub).width
         const x0 = x(l.t) - (tw + 6 + gw) / 2
         g.textAlign = 'left'
-        g.fillText(l.sub, x0, 33)
+        g.fillText(l.sub, x0, 43)
         g.textAlign = 'center'
-        drawGlyph(g, l.subTone, x0 + tw + 6, 33 - 14, l.ok === false ? css('--bad') : css('--fg'))
+        drawGlyph(g, l.subTone, x0 + tw + 6, 43 - 16, l.ok === false ? css('--bad') : css('--fg'), scale)
       }
     }
   }
 }
 
 /** Tone icon in a 24×16 box at (x, y). */
-function drawGlyph(g: CanvasRenderingContext2D, tone: number, x: number, y: number, color: string) {
+function drawGlyph(g: CanvasRenderingContext2D, tone: number, x: number, y: number, color: string, scale = 1) {
   g.save()
+  g.translate(x, y)
+  g.scale(scale, scale)
   g.strokeStyle = color
   g.fillStyle = color
   g.lineWidth = 2.6
@@ -185,11 +188,11 @@ function drawGlyph(g: CanvasRenderingContext2D, tone: number, x: number, y: numb
   g.lineJoin = 'round'
   if (tone === 0) {
     g.beginPath()
-    g.arc(x + 12, y + 12, 2.4, 0, Math.PI * 2)
+    g.arc(12, 12, 2.4, 0, Math.PI * 2)
     g.fill()
   } else {
     g.beginPath()
-    GLYPH_POINTS[tone as 1 | 2 | 3 | 4].forEach(([px, py], i) => (i ? g.lineTo(x + px, y + py) : g.moveTo(x + px, y + py)))
+    GLYPH_POINTS[tone as 1 | 2 | 3 | 4].forEach(([px, py], i) => (i ? g.lineTo(px, py) : g.moveTo(px, py)))
     g.stroke()
   }
   g.restore()

@@ -122,6 +122,6 @@ function PreviewChart({ item, range, cursor }: { item: BankItem; range: { lo: nu
     [item, pinyin, hop],
   )
   const boundaries = useMemo(() => item.ref.segments.slice(1).map((s) => s[0] * hop), [item, hop])
-  const lines: PlotLine[] = [{ t: Array.from(chao, (_, i) => i * hop), v: chao, kind: 'ref' }]
+  const lines: PlotLine[] = [{ t: Array.from(chao, (_, i) => i * hop), v: chao, kind: 'wrong' }]
   return <PitchPlot lines={lines} duration={chao.length * hop} labels={labels} boundaries={boundaries} cursor={cursor} height={170} />
 }

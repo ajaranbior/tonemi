@@ -49,7 +49,7 @@ export function answerOverlay(
   })
   return {
     labels,
-    guess: t.length ? { t, v, kind: 'user' } : null,
+    guess: t.length ? { t, v, kind: 'wrong' } : null,
     boundaries: segments.slice(1).map((s) => (s[0] - offset) * hop),
   }
 }

@@ -5,7 +5,8 @@ export interface PlotLine {
   t: ArrayLike<number>
   /** Chao values; NaN breaks the line. */
   v: ArrayLike<number>
-  kind: 'ref' | 'user' | 'live'
+  /** 'wrong' (red) marks the tone the learner picked when it was incorrect. */
+  kind: 'ref' | 'user' | 'live' | 'wrong'
 }
 
 export interface PlotLabel {
@@ -111,7 +112,7 @@ function paint(
   g.setLineDash([])
 
   for (const line of lines) {
-    const color = line.kind === 'ref' ? css('--ref') : css('--user')
+    const color = line.kind === 'ref' ? css('--ref') : line.kind === 'wrong' ? css('--bad') : css('--user')
     g.strokeStyle = color
     g.lineWidth = line.kind === 'ref' ? 5 : 3
     g.globalAlpha = line.kind === 'ref' ? 0.45 : 1

@@ -6,7 +6,7 @@
   --border: #e3e6ea;
   --accent: #1f6feb;
   --accent-fg: #ffffff;
-  --bad: #c2410c;
+  --bad: #d1242f;
   --good: #15803d;
   --mid: #b45309;
   --band-a: #eef1f5;
@@ -33,7 +33,7 @@
     --muted: #9aa3ae;
     --border: #2a2f37;
     --accent: #4c8dff;
-    --bad: #fb923c;
+    --bad: #ff6b6b;
     --good: #4ade80;
     --mid: #fbbf24;
     --band-a: #1d2128;
@@ -244,3 +244,5 @@ button.link { min-height: 0; padding: 0; border: 0; background: none; color: var
 .options > p { margin: 4px 2px; }
 .segmented.compact { padding: 3px; border-radius: 10px; }
 .segmented.compact button { min-height: 32px; font-size: 0.8rem; padding: 4px 6px; }
+
+.key.wrong { background: var(--bad); }

@@ -390,7 +390,7 @@ export default function EarClips({ onAnswered, onOverride }: Props) {
             </div>
 
             {sAnswered && g && <ClipChart clip={sClip} chosen={sChosen} ready={ready} span={span(sClip)} cursor={cursor} />}
-            {g && !g.all && <p className="muted small">Grey is what was said; blue is the tone you picked. Space replays it; the line follows the audio.</p>}
+            {g && !g.all && <p className="muted small">Grey is what was really said; red is the tone you picked. Space replays it; the line follows the audio.</p>}
 
             <div className="controls ear-controls">
               <button className="primary" onClick={() => play(sClip)} disabled={playing}>▶ Clip</button>
@@ -495,7 +495,7 @@ function ClipChart({ clip, chosen, ready, span, cursor }: { clip: Clip; chosen: 
         <span className="key ref" /> speaker
         {guess && (
           <>
-            <span className="key user" /> shape of the tone you picked
+            <span className="key wrong" /> the tone you picked
           </>
         )}
       </div>

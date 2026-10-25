@@ -324,11 +324,11 @@ function ReferenceChart({ item, range, chosen, pinyin, wrong, cursor }: { item: 
         <span className="key ref" /> the speaker's pitch
         {guess && (
           <>
-            <span className="key user" /> shape of the tone you picked
+            <span className="key wrong" /> the tone you picked
           </>
         )}
       </div>
-      {wrong && <p className="muted small">Grey is what was said; blue is the tone you picked. Space replays it; the line follows the audio.</p>}
+      {wrong && <p className="muted small">Grey is what was really said; red is the tone you picked. Space replays it; the line follows the audio.</p>}
     </>
   )
 }

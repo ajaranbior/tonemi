@@ -226,3 +226,15 @@ button.link { min-height: 0; padding: 0; border: 0; background: none; color: var
 .compare small { width: 44px; color: var(--muted); text-transform: uppercase; font-size: 0.65rem; letter-spacing: 0.05em; }
 .tone-btn svg { margin-top: 2px; }
 .tone-chip span:last-child { color: var(--fg); }
+
+/* Progress card */
+.stat-block { margin: 10px 0 14px; }
+.stat-list { list-style: none; padding: 0; margin: 8px 0; display: flex; flex-direction: column; gap: 8px; }
+.stat-row { display: grid; grid-template-columns: 112px 1fr 46px; align-items: center; gap: 10px; }
+.stat-pattern { display: flex; align-items: center; gap: 6px; }
+.pattern-glyphs { display: inline-flex; gap: 2px; }
+.pattern-glyphs .glyph { width: 20px; height: 14px; }
+.stat-bar { height: 10px; border-radius: 6px; background: var(--band-a); overflow: hidden; }
+.stat-bar > span { display: block; height: 100%; border-radius: 6px; }
+.stat-pct { text-align: right; font-variant-numeric: tabular-nums; }
+.mixup { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }

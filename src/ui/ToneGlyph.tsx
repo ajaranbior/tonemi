@@ -16,11 +16,11 @@ export function ToneGlyph({ tone }: { tone: Tone }) {
 }
 
 /** Icon + full name, e.g. "[ˇ] Tone 3 · falling-rising". */
-export function ToneChip({ tone }: { tone: Tone }) {
+export function ToneChip({ tone, short }: { tone: Tone; short?: boolean }) {
   return (
     <span className={`tone-chip t${tone}`}>
       <ToneGlyph tone={tone} />
-      <span>{toneLong(tone)}</span>
+      <span>{short ? (tone === 0 ? 'Neutral' : `Tone ${tone}`) : toneLong(tone)}</span>
     </span>
   )
 }

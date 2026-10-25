@@ -3,7 +3,8 @@ import { topConfusions } from '../ear/adapt'
 import { navigate, useRoute } from '../route'
 import { getEarCombos, getEarConfusions, getPref, resetEar, setPref } from '../store'
 import { EarBank } from './EarBank'
-import { toneName } from './tone'
+import type { Tone } from '../analysis/tones'
+import { ToneChip, ToneGlyph } from './ToneGlyph'
 
 // The video mode pulls in the pinyin dictionary; load it only when opened.
 const EarClips = lazy(() => import('./EarClips'))
@@ -61,33 +62,84 @@ export function EarPage() {
   )
 }
 
+/** Red up to ~15%, green from ~95%, a smooth ramp in between. */
+const gradeColor = (pct: number) => `hsl(${Math.round(Math.min(120, Math.max(0, (pct - 15) * 1.5)))} 62% 46%)`
+
+const toneOf = (c: string): Tone => Number(c) as Tone
+
+function PatternGlyphs({ combo }: { combo: string }) {
+  return (
+    <span className="pattern-glyphs" aria-hidden="true">
+      {[...combo].map((c, i) => (
+        <ToneGlyph key={i} tone={toneOf(c)} />
+      ))}
+    </span>
+  )
+}
+
 function EarStats({ session, tick, onReset }: { session: { n: number; ok: number }; tick: number; onReset: () => void }) {
   void tick // re-read the store after every answer
-  const combos = Object.entries(getEarCombos())
+  const [showAll, setShowAll] = useState(false)
+  const all = Object.entries(getEarCombos())
     .filter(([, s]) => s.n >= 2)
-    .sort((a, b) => a[1].ema - b[1].ema)
-    .slice(0, 4)
-  const conf = topConfusions(getEarConfusions())
-  if (!session.n && !combos.length && !conf.length) return null
+    .sort((a, b) => a[1].ema - b[1].ema || b[1].n - a[1].n)
+  const combos = showAll ? all : all.slice(0, 6)
+  const conf = topConfusions(getEarConfusions(), 5)
+  if (!session.n && !all.length && !conf.length) return null
   return (
     <details className="card settings" open={session.n >= 5}>
       <summary>
-        Progress{session.n > 0 && ` · ${session.ok}/${session.n} this session`}
+        Progress{session.n > 0 && ` · ${session.ok}/${session.n} right this session`}
       </summary>
-      {combos.length > 0 && (
-        <p className="small">
-          <strong>Weakest patterns:</strong>{' '}
-          {combos.map(([c, s]) => `${[...c].join('-')} (${Math.round(s.ema * 100)}%)`).join(' · ')}
-          <br />
-          <span className="muted">These come up more often.</span>
-        </p>
+
+      {all.length > 0 && (
+        <section className="stat-block">
+          <h3>Tone patterns, hardest first</h3>
+          <p className="muted small">
+            How often you got the whole pattern right in your recent answers. The red ones come up more often.
+          </p>
+          <ul className="stat-list">
+            {combos.map(([combo, s]) => {
+              const pct = Math.round(s.ema * 100)
+              return (
+                <li key={combo} className="stat-row">
+                  <span className="stat-pattern">
+                    <PatternGlyphs combo={combo} />
+                    <span className="small muted">{[...combo].join('-')}</span>
+                  </span>
+                  <span className="stat-bar" role="img" aria-label={`${pct}% right`}>
+                    <span style={{ width: `${Math.max(pct, 3)}%`, background: gradeColor(pct) }} />
+                  </span>
+                  <strong className="stat-pct" style={{ color: gradeColor(pct) }}>{pct}%</strong>
+                </li>
+              )
+            })}
+          </ul>
+          {all.length > 6 && (
+            <button className="link small" onClick={() => setShowAll(!showAll)}>
+              {showAll ? 'Show fewer' : `Show all ${all.length} patterns`}
+            </button>
+          )}
+        </section>
       )}
+
       {conf.length > 0 && (
-        <p className="small">
-          <strong>Most-confused:</strong>{' '}
-          {conf.map(([e, c, n]) => `${toneName(e)} heard as ${toneName(c)} ×${n}`).join(' · ')}
-        </p>
+        <section className="stat-block">
+          <h3>Your most common mix-ups</h3>
+          <p className="muted small">The tone it really was → the tone you answered, and how many times.</p>
+          <ul className="stat-list">
+            {conf.map(([expected, answered, n]) => (
+              <li key={`${expected}${answered}`} className="mixup">
+                <ToneChip tone={expected} short />
+                <span className="muted" aria-label="answered as">→</span>
+                <ToneChip tone={answered} short />
+                <strong>×{n}</strong>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
+
       <button onClick={onReset}>Reset ear stats</button>
     </details>
   )

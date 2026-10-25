@@ -100,3 +100,11 @@ export function resetEar() {
   state.earConfusions = {}
   save()
 }
+export function removeEarConfusion(key: string) {
+  const n = (state.earConfusions?.[key] ?? 0) - 1
+  const next = { ...state.earConfusions }
+  if (n > 0) next[key] = n
+  else delete next[key]
+  state.earConfusions = next
+  save()
+}

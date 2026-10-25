@@ -5,7 +5,8 @@ import { playUrl, stopPlayback } from '../audio/playback'
 import { audioUrl, loadManifest, refChao } from '../bank/load'
 import type { BankItem, ItemKind, Manifest } from '../bank/types'
 import { clearRetry, dueRetry, grade, pickByCombo, scheduleRetry, updateStat, type Retry } from '../ear/adapt'
-import { addEarConfusion, getEarCombos, getPref, setEarCombo, setPref } from '../store'
+import type { EarStat } from '../store'
+import { addEarConfusion, getEarCombos, getPref, removeEarConfusion, setEarCombo, setPref } from '../store'
 import { Toggle } from './Toggle'
 import { PitchPlot, type PlotLine } from './PitchPlot'
 import { answerOverlay } from './earPlot'
@@ -23,9 +24,10 @@ const comboKey = (i: BankItem) => i.surface.join('')
 
 interface Props {
   onAnswered: (correct: boolean) => void
+  onOverride: () => void
 }
 
-export function EarBank({ onAnswered }: Props) {
+export function EarBank({ onAnswered, onOverride }: Props) {
   const [manifest, setManifest] = useState<Manifest | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [kind, setKind] = useState<Kind>(() => getPref('ear.kind', 'pair') as Kind)
@@ -35,6 +37,8 @@ export function EarBank({ onAnswered }: Props) {
   const [answered, setAnswered] = useState(false)
   const [playing, setPlaying] = useState(false)
   const [cursor, setCursor] = useState<number | undefined>()
+  const [accepted, setAccepted] = useState(false)
+  const lastRec = useRef<{ key: string; prev: EarStat | undefined; conf: string[] } | null>(null)
   const [sound, setSound] = useState(() => getPref<boolean>('ear.sound', true))
   const [autoReveal, setAutoReveal] = useState(() => getPref<boolean>('ear.auto', true))
   const review = useReview<BankItem>()
@@ -61,14 +65,16 @@ export function EarBank({ onAnswered }: Props) {
         pick = pickByCombo(pool, comboKey, getEarCombos())
       }
       if (!pick) return
-      if (item && answered) review.record({ item, chosen })
+      if (item && answered) review.record({ item, chosen, accepted })
       review.leave()
+      setAccepted(false)
+      lastRec.current = null
       autoplay.current = play
       setItem(pick)
       setChosen(pick.surface.map(() => null))
       setAnswered(false)
     },
-    [manifest, item, chosen, answered, review.record, review.leave],
+    [manifest, item, chosen, answered, accepted, review.record, review.leave],
   )
 
   useEffect(() => {
@@ -113,8 +119,10 @@ export function EarBank({ onAnswered }: Props) {
     if (!item || answered || answers.some((c) => c === null)) return
     const g = grade(item.surface, answers)
     const key = comboKey(item)
+    const conf = item.surface.flatMap((t, i) => (g.correct[i] ? [] : [`${t}>${answers[i]}`]))
+    lastRec.current = { key, prev: getEarCombos()[key], conf }
     setEarCombo(key, updateStat(getEarCombos()[key], g.all))
-    item.surface.forEach((t, i) => !g.correct[i] && addEarConfusion(`${t}>${answers[i]}`))
+    conf.forEach(addEarConfusion)
     trial.current++
     retry.current = g.all ? clearRetry(retry.current, item.id) : scheduleRetry(retry.current, item.id, trial.current)
     setAnswered(true)
@@ -123,10 +131,30 @@ export function EarBank({ onAnswered }: Props) {
     if (!g.all) setTimeout(() => void listen(), sound ? FEEDBACK_SECONDS * 1000 : 0)
   }, [item, answered, chosen, onAnswered, listen, sound])
 
+  /** The learner disagrees with the answer key: count this trial as correct. */
+  const accept = useCallback(() => {
+    const rec = lastRec.current
+    if (!item || !answered || accepted || !rec) return
+    setEarCombo(rec.key, updateStat(rec.prev, true))
+    rec.conf.forEach(removeEarConfusion)
+    retry.current = clearRetry(retry.current, item.id)
+    setAccepted(true)
+    onOverride()
+  }, [item, answered, accepted, onOverride])
+
+  /** Backspace: take back the last tone entered. */
+  const undo = useCallback(() => {
+    if (answered) return
+    setChosen((c) => {
+      const last = c.map((x) => x !== null).lastIndexOf(true)
+      return last < 0 ? c : c.map((x, i) => (i === last ? null : x))
+    })
+  }, [answered])
+
   const pick = useCallback(
     (index: number, tone: Tone) => {
       if (answered) return
-      const next = chosen.map((x, i) => (i === index ? tone : x))
+      const next = chosen.map((x, i) => (i === index ? (x === tone ? null : tone) : x))
       setChosen(next)
       if (autoReveal && next.every((c) => c !== null)) check(next)
     },
@@ -153,12 +181,17 @@ export function EarBank({ onAnswered }: Props) {
       } else if (e.key === 'ArrowRight') {
         e.preventDefault()
         if (shownAnswered) advance()
+      } else if (e.key === 'Backspace') {
+        e.preventDefault()
+        undo()
+      } else if ((e.key === 'm' || e.key === 'M') && !rv && answered && !accepted) {
+        accept()
       } else if (e.key === ' ' || e.key === 'r' || e.key === 'R') {
         e.preventDefault()
         if (!e.repeat) void listen()
-      } else if (!shownAnswered && /^[0-4]$/.test(e.key)) {
+      } else if (!shownAnswered && /^[0-5]$/.test(e.key)) {
         const i = chosen.findIndex((c) => c === null)
-        if (i >= 0 && !(i === 0 && e.key === '0')) pick(i, Number(e.key) as Tone)
+        if (i >= 0 && !(i === 0 && (e.key === '0' || e.key === '5'))) pick(i, (e.key === '5' ? 0 : Number(e.key)) as Tone)
       }
     }
     // A focused button would otherwise "click" on Space release.
@@ -169,7 +202,7 @@ export function EarBank({ onAnswered }: Props) {
       window.removeEventListener('keydown', onKey)
       window.removeEventListener('keyup', onUp)
     }
-  }, [item, shownAnswered, chosen, advance, check, listen, pick, review, autoReveal])
+  }, [item, shownAnswered, chosen, advance, check, listen, pick, review, autoReveal, undo, accept, accepted, rv, answered])
 
   const refRange: SpeakerRange | null = manifest && shown ? manifest.speakers[shown.speaker].range : null
   const complete = chosen.length > 0 && chosen.every((c) => c !== null)
@@ -196,9 +229,9 @@ export function EarBank({ onAnswered }: Props) {
         ))}
       </div>
 
-      <section className={`card ${g ? (g.all ? 'flash-ok' : 'flash-bad') : ''}`}>
+      <section className={`card ${g ? (g.all || (rv ? !!rv.accepted : accepted) ? 'flash-ok' : 'flash-bad') : ''}`}>
         {rv && <div className="banner">Reviewing an earlier word ({(review.index ?? 0) + 1} of {review.count})</div>}
-        {g && <ResultBanner key={shown.id + shownChosen.join('')} grade={g} />}
+        {g && <ResultBanner key={shown.id + shownChosen.join('') + String((rv ? !!rv.accepted : accepted))} grade={g} accepted={(rv ? !!rv.accepted : accepted)} />}
         <div className="item-head">
           <div>
             {shownAnswered || showHanzi ? (
@@ -236,12 +269,15 @@ export function EarBank({ onAnswered }: Props) {
             <button className="primary" onClick={advance} disabled={!shownAnswered}>Next →</button>
           )}
         </div>
+        {!rv && g && !g.all && !accepted && (
+          <button className="link small" onClick={accept}>I was right — mark my answer as correct (M)</button>
+        )}
       </section>
 
       {shownAnswered && g && (
         <section className="card">
           <Verdict syllables={pinyin} expected={shown.surface} lexical={shown.lexical} chosen={shownChosen} />
-          {!g.all && <AnswerPreview key={shown.id + shownChosen.join('')} chosen={shownChosen as Tone[]} exclude={shown.id} syllables={shown.syllables} />}
+          {!g.all && !(rv ? !!rv.accepted : accepted) && <AnswerPreview key={shown.id + shownChosen.join('')} chosen={shownChosen as Tone[]} exclude={shown.id} syllables={shown.syllables} />}
         </section>
       )}
 

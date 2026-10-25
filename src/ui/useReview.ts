@@ -4,6 +4,8 @@ import type { Tone } from '../analysis/tones'
 export interface Trial<T> {
   item: T
   chosen: (Tone | null)[]
+  /** The learner overruled the answer key for this trial. */
+  accepted?: boolean
 }
 
 /** Answered trials kept in memory so the learner can step back and look at them again. */

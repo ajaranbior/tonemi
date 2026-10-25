@@ -26,6 +26,12 @@ export function EarPage() {
     setTick((t) => t + 1)
   }, [])
 
+  // The learner overruled the key: the last miss counts as a hit.
+  const overridden = useCallback(() => {
+    setSession((s) => ({ ...s, ok: s.ok + 1 }))
+    setTick((t) => t + 1)
+  }, [])
+
   const choose = (m: Mode) => {
     setPref('ear.mode', m)
     navigate('ear', m)
@@ -43,10 +49,10 @@ export function EarPage() {
       </div>
 
       {mode === 'words' ? (
-        <EarBank onAnswered={answered} />
+        <EarBank onAnswered={answered} onOverride={overridden} />
       ) : (
         <Suspense fallback={<div className="card">Loading…</div>}>
-          <EarClips onAnswered={answered} />
+          <EarClips onAnswered={answered} onOverride={overridden} />
         </Suspense>
       )}
 

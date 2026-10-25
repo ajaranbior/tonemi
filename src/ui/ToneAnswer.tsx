@@ -57,7 +57,7 @@ export function ToneAnswer({ chosen, expected, onPick }: Props) {
           })}
         </div>
       ))}
-      <p className="muted small keys">Keys: 1–4 tones · 0 neutral · Enter check/next · Space replay · ← → previous/next</p>
+      <p className="muted small keys">Keys: 1–4 tones · 5 neutral · Backspace undo · Enter check/next · Space replay · ← → previous/next · M mark correct</p>
     </div>
   )
 }
@@ -96,13 +96,13 @@ export function Verdict({ syllables, expected, lexical, chosen }: VerdictProps) 
 }
 
 /** Big coloured result strip; the pop/shake animation restarts whenever it mounts. */
-export function ResultBanner({ grade }: { grade: Grade }) {
+export function ResultBanner({ grade, accepted }: { grade: Grade; accepted?: boolean }) {
   const right = grade.correct.filter(Boolean).length
   const n = grade.correct.length
   return (
-    <div className={`result ${grade.all ? 'ok' : 'bad'}`} role="status">
-      <span>{grade.all ? '✓ Correct' : '✗ Not quite'}</span>
-      {n > 1 && <small>{right} of {n} right</small>}
+    <div className={`result ${grade.all || accepted ? 'ok' : 'bad'}`} role="status">
+      <span>{accepted ? '✓ Marked correct' : grade.all ? '✓ Correct' : '✗ Not quite'}</span>
+      {accepted ? <small>you overruled the key</small> : n > 1 && <small>{right} of {n} right</small>}
     </div>
   )
 }

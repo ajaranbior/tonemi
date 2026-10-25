@@ -199,17 +199,16 @@ button.link { min-height: 0; padding: 0; border: 0; background: none; color: var
 
 .preview { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border); }
 
-/* Right / wrong feedback */
-.result { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; border-radius: 12px; margin-bottom: 10px; font-weight: 700; font-size: 1.25rem; animation: pop 0.4s cubic-bezier(0.2, 1.6, 0.4, 1); }
+/* Right / wrong feedback (kept gentle) */
+.result { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; border-radius: 12px; margin-bottom: 10px; font-weight: 700; font-size: 1.2rem; animation: pop 0.25s ease-out; }
 .result small { font-weight: 600; font-size: 0.85rem; }
 .result.ok { background: color-mix(in srgb, var(--good) 24%, var(--card)); color: var(--good); }
-.result.bad { background: color-mix(in srgb, var(--bad) 24%, var(--card)); color: var(--bad); animation: pop 0.4s cubic-bezier(0.2, 1.6, 0.4, 1), shake 0.45s 0.1s; }
-.card.flash-ok { animation: flash-ok 0.9s ease-out; }
-.card.flash-bad { animation: flash-bad 0.9s ease-out; }
-@keyframes pop { from { transform: scale(0.8); opacity: 0.2; } to { transform: scale(1); opacity: 1; } }
-@keyframes shake { 20%, 60% { transform: translateX(-7px); } 40%, 80% { transform: translateX(7px); } }
-@keyframes flash-ok { from { box-shadow: 0 0 0 4px var(--good); } to { box-shadow: 0 0 0 0 transparent; } }
-@keyframes flash-bad { from { box-shadow: 0 0 0 4px var(--bad); } to { box-shadow: 0 0 0 0 transparent; } }
+.result.bad { background: color-mix(in srgb, var(--bad) 24%, var(--card)); color: var(--bad); }
+.card.flash-ok { animation: flash-ok 0.7s ease-out; }
+.card.flash-bad { animation: flash-bad 0.7s ease-out; }
+@keyframes pop { from { transform: scale(0.97); opacity: 0.4; } to { transform: scale(1); opacity: 1; } }
+@keyframes flash-ok { from { box-shadow: 0 0 0 2px var(--good); } to { box-shadow: 0 0 0 0 transparent; } }
+@keyframes flash-bad { from { box-shadow: 0 0 0 2px var(--bad); } to { box-shadow: 0 0 0 0 transparent; } }
 @media (prefers-reduced-motion: reduce) { .result, .result.bad, .card.flash-ok, .card.flash-bad { animation: none; } }
 
 .row-mark { font-size: 1.4rem; font-weight: 800; text-align: center; }

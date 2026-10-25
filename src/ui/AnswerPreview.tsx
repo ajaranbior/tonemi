@@ -14,10 +14,14 @@ interface Props {
   chosen: Tone[]
   /** Bank word to leave out (the one that was just played). */
   exclude?: string
+  /** Toneless syllables of the word that was asked; recordings sharing them are preferred. */
+  syllables?: string[]
 }
 
+const plain = (s: string) => s.toLowerCase().replace(/ü/g, 'v')
+
 /** "If it were 2-3, it would sound like this": a real recording with that tone pattern, else a synthesized hum. */
-export function AnswerPreview({ chosen, exclude }: Props) {
+export function AnswerPreview({ chosen, exclude, syllables }: Props) {
   const [manifest, setManifest] = useState<Manifest | null>(null)
   const [round, setRound] = useState(0)
   const [cursor, setCursor] = useState<number | undefined>()
@@ -29,11 +33,18 @@ export function AnswerPreview({ chosen, exclude }: Props) {
     return () => stopPlayback()
   }, [])
 
-  const matches = useMemo(
-    () => manifest?.items.filter((i) => same(i.surface, chosen) && i.id !== exclude) ?? [],
-    [manifest, chosen, exclude],
-  )
+  // Recordings with the chosen tones, those sharing the most syllables with the asked word first.
+  const matches = useMemo(() => {
+    const asked = syllables?.map(plain) ?? []
+    const shared = (i: BankItem) => i.syllables.filter((s, k) => plain(s) === asked[k]).length
+    return (manifest?.items ?? [])
+      .filter((i) => same(i.surface, chosen) && i.id !== exclude)
+      .map((i) => ({ i, score: shared(i), r: Math.random() }))
+      .sort((a, b) => b.score - a.score || a.r - b.r)
+      .map((x) => x.i)
+  }, [manifest, chosen, exclude, syllables])
   const item: BankItem | null = matches.length ? matches[round % matches.length] : null
+  const sharedCount = item && syllables ? item.syllables.filter((s, k) => plain(s) === plain(syllables[k] ?? '')).length : 0
   const range = manifest ? Object.values(manifest.speakers)[0].range : null
 
   const play = async () => {
@@ -66,6 +77,13 @@ export function AnswerPreview({ chosen, exclude }: Props) {
               ))}
             </span>
           </p>
+          {syllables && sharedCount > 0 && (
+            <p className="muted small">
+              {sharedCount === item.syllables.length && sharedCount === syllables.length
+                ? 'Same syllables as the word you heard, with your tones.'
+                : 'Shares some syllables with the word you heard.'}
+            </p>
+          )}
           <PreviewChart item={item} range={speaker} cursor={cursor} />
         </>
       ) : (

@@ -33,6 +33,8 @@ interface Clip {
   tones: Tone[]
   lexical: Tone[]
   pinyin: string[]
+  /** Toneless syllables. */
+  syllables: string[]
   key: string
 }
 
@@ -139,6 +141,7 @@ export default function EarClips({ onAnswered }: Props) {
           tones: tt,
           lexical: lexical.slice(r.from, r.to) as Tone[],
           pinyin: tt.map((tone, i) => markTone((syl[h0 + i] ?? '').replace(/v/g, 'ü'), tone)),
+          syllables: tt.map((_, i) => (syl[h0 + i] ?? '').replace(/ü/g, 'v')),
           key: tt.join(''),
         })
       }
@@ -374,7 +377,7 @@ export default function EarClips({ onAnswered }: Props) {
           {sAnswered && g && (
             <section className="card">
               <Verdict syllables={sClip.pinyin} expected={sClip.tones} lexical={sClip.lexical} chosen={sChosen} />
-              {!g.all && <AnswerPreview key={sClip.id + sChosen.join('')} chosen={sChosen as Tone[]} />}
+              {!g.all && <AnswerPreview key={sClip.id + sChosen.join('')} chosen={sChosen as Tone[]} syllables={sClip.syllables} />}
               <p className="muted small">Line: {cues[sClip.cue].text}</p>
               <p className="muted small">Answers are generated from the subtitle text, so rare readings can be wrong, and clip edges are estimated.</p>
             </section>

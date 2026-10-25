@@ -238,7 +238,7 @@ export function EarBank({ onAnswered }: Props) {
       {shownAnswered && g && (
         <section className="card">
           <Verdict syllables={pinyin} expected={shown.surface} lexical={shown.lexical} chosen={shownChosen} />
-          {!g.all && <AnswerPreview key={shown.id + shownChosen.join('')} chosen={shownChosen as Tone[]} exclude={shown.id} />}
+          {!g.all && <AnswerPreview key={shown.id + shownChosen.join('')} chosen={shownChosen as Tone[]} exclude={shown.id} syllables={shown.syllables} />}
         </section>
       )}
 

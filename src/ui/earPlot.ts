@@ -1,5 +1,5 @@
 import type { Segment } from '../analysis/segment'
-import { toneTemplate, type Tone } from '../analysis/tones'
+import { displayShape, type Tone } from '../analysis/tones'
 import type { PlotLabel, PlotLine } from './PitchPlot'
 import { toneName } from './tone'
 
@@ -24,8 +24,8 @@ export function answerOverlay(
     const seg = voicedExtent(seg0, chao)
     const ok = chosen[i] === expected[i]
     const pick = chosen[i]
-    if (!ok && pick) {
-      const tpl = toneTemplate(pick, i === segments.length - 1)
+    if (!ok && pick !== null) {
+      const tpl = displayShape(pick, segments.length, i)
       // One point per frame: the plot breaks lines across gaps longer than 50 ms.
       for (let f = seg[0]; f < seg[1]; f++) {
         const x = ((f - seg[0]) / Math.max(1, seg[1] - seg[0] - 1)) * (tpl.length - 1)

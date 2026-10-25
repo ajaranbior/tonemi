@@ -62,6 +62,9 @@ git clone --filter=blob:none --no-checkout https://github.com/hugolpz/audio-cmn 
 npm run build-bank -- /tmp/audio-cmn
 ```
 
+Adding `FILL=1` before `npm run build-bank` instead *adds* recordings for tone patterns that have fewer than 4 items,
+keeping every existing item and id (so saved progress stays valid).
+
 The script picks common HSK words per tone combination (mixing sonorant-only
 words like 妈妈/名人 with words containing stops and fricatives), runs every clip
 through the app's own pitch analysis, and drops clips whose contour contradicts

@@ -1,6 +1,6 @@
 import { SR, stToHz } from '../analysis/pitch'
 import type { SpeakerRange } from '../analysis/normalize'
-import { toneTemplate, type Tone } from '../analysis/tones'
+import { displayShape, type Tone } from '../analysis/tones'
 
 const GAP = 0.05
 const dur = (t: Tone) => (t === 0 ? 0.2 : t === 3 ? 0.4 : 0.32)
@@ -13,7 +13,7 @@ export function synthTones(tones: Tone[], range: SpeakerRange): Float32Array {
   let phase = 0
   tones.forEach((tone, k) => {
     const n = Math.round(dur(tone) * SR)
-    const tpl = tone === 0 ? [2.4, 2.4] : toneTemplate(tone, k === tones.length - 1)
+    const tpl = displayShape(tone, tones.length, k)
     for (let s = 0; s < n; s++, i++) {
       const x = s / (n - 1)
       const pos = x * (tpl.length - 1)

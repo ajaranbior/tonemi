@@ -27,9 +27,22 @@ const TEMPLATES: Record<1 | 2 | 3 | 4, { final: number[][]; nonFinal: number[][]
   },
 }
 
-/** A representative 5-point Chao contour for a tone (what the textbook shape looks like). */
-export function toneTemplate(tone: 1 | 2 | 3 | 4, final: boolean): number[] {
-  return (final ? TEMPLATES[tone].final : TEMPLATES[tone].nonFinal)[0]
+/**
+ * Typical 5-point Chao contour of a tone for display, measured from the native word bank by
+ * position: alone, last syllable of a 2-syllable word, last of a 3+ syllable word, or earlier.
+ * (A final 3rd tone is low and nearly level in real words; the dip-and-rise is the isolated form.)
+ */
+const SHAPES: Record<'single' | 'final2' | 'final3' | 'nonfinal', Record<Tone, number[]>> = {
+  single: { 0: [2.3, 2.2, 2.1, 2, 1.9], 1: [3.9, 3.9, 3.8, 3.8, 3.8], 2: [2.2, 2, 2.1, 2.9, 4.2], 3: [2.3, 1.6, 1.1, 1.3, 2.3], 4: [4.8, 4.7, 4.2, 3.3, 2.4] },
+  final2: { 0: [2.4, 2.3, 2.2, 2, 1.8], 1: [4, 3.9, 3.9, 3.9, 3.9], 2: [1.8, 1.4, 1.5, 2.1, 3], 3: [1.6, 0.9, 0.6, 0.7, 0.9], 4: [4, 3.9, 3.3, 2.4, 1.9] },
+  final3: { 0: [2.1, 2, 2, 2, 2.1], 1: [3.8, 3.6, 3.6, 3.6, 3.6], 2: [0.8, 1.1, 1.2, 1.8, 2.7], 3: [1.2, 0.8, 0.7, 1.2, 1.5], 4: [3.8, 3.6, 3.1, 2.4, 2] },
+  nonfinal: { 0: [2.2, 2.1, 2, 2, 2], 1: [4.6, 4.6, 4.6, 4.7, 4.6], 2: [2.2, 2.1, 2.4, 3.2, 4], 3: [2.5, 2.1, 1.6, 1.3, 1.2], 4: [4.9, 4.5, 3.5, 2.3, 1.7] },
+}
+
+/** Display contour of `tone` for syllable `index` of a `count`-syllable utterance. */
+export function displayShape(tone: Tone, count: number, index: number): number[] {
+  const pos = count === 1 ? 'single' : index < count - 1 ? 'nonfinal' : count === 2 ? 'final2' : 'final3'
+  return SHAPES[pos][tone]
 }
 
 export interface Recognition {

@@ -4,12 +4,15 @@
  *   git clone --filter=blob:none --no-checkout https://github.com/hugolpz/audio-cmn /path/audio-cmn
  *   npx tsx scripts/build-bank.ts /path/audio-cmn
  *
+ * FILL=1 adds recordings to the existing bank without touching it: only for tone patterns
+ * (as pronounced) that have fewer than MIN_PER_PATTERN items, with new, non-clashing ids.
+ *
  * Every clip is pitch-analysed with the app's own pipeline; clips whose contour
  * contradicts the expected tones are dropped, which also weeds out wrong
  * polyphone readings and missing neutral tones.
  */
 import { execFileSync } from 'node:child_process'
-import { copyFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { pinyin } from 'pinyin-pro'
 import { chaoTrack, rangeFromSemitones, voicedSemitones } from '../src/analysis/normalize'
@@ -24,6 +27,15 @@ const repo = resolve(process.argv[2] ?? '')
 if (!process.argv[2]) throw new Error('usage: tsx scripts/build-bank.ts <audio-cmn clone>')
 const OUT = resolve('public/bank')
 const QUALITY = '64k'
+const FILL = process.env.FILL === '1'
+const MIN_PER_PATTERN = 4
+const existing: Manifest | null = FILL ? JSON.parse(readFileSync(join(OUT, 'manifest.json'), 'utf8')) : null
+const coverage = (surface: string) => existing!.items.filter((i) => i.surface.join('') === surface).length
+/** Fill mode relaxes the pitch check, so known neutral-final words (老太太 lǎotàitai) are skipped by hand. */
+const FILL_SKIP = ['老太太', '老人家']
+/** Standard words with unambiguous tones (4-4-x runs) whose middle falling tone the recognizer reads as 3rd. */
+const FILL_TRUST = new Set(['大气压', '照相机', '电动机', '计算机', '现代化', '记忆力', '俱乐部', '众议院'])
+const haveWord = new Set([...(existing?.items.map((i) => i.hanzi) ?? []), ...(FILL ? FILL_SKIP : [])])
 
 const CAPS: Record<ItemKind, { keep: number; candidates: number }> = {
   single: { keep: 16, candidates: 40 },
@@ -116,7 +128,12 @@ function pickCandidates(list: Candidate[], n: number): Candidate[] {
 }
 
 const candidates: Candidate[] = []
-for (const [, list] of byCombo) candidates.push(...pickCandidates(list, CAPS[list[0].kind].candidates))
+if (FILL) {
+  for (const list of byCombo.values())
+    for (const c of list) if (!haveWord.has(c.hanzi) && c.alternatives.some((a) => coverage(a.join('')) < MIN_PER_PATTERN)) candidates.push(c)
+} else {
+  for (const [, list] of byCombo) candidates.push(...pickCandidates(list, CAPS[list[0].kind].candidates))
+}
 console.log(`${files.length} files, ${byCombo.size} combos, ${candidates.length} candidates`)
 
 // --- 2. fetch + analyse ------------------------------------------------------
@@ -132,7 +149,7 @@ function decode(file: string): Float32Array {
 
 const tracks = new Map<Candidate, PitchTrack>()
 for (const c of candidates) tracks.set(c, trackPitch(decode(join(repo, c.path))))
-const range = rangeFromSemitones([...tracks.values()].flatMap(voicedSemitones))!
+const range = existing ? existing.speakers.yue.range : rangeFromSemitones([...tracks.values()].flatMap(voicedSemitones))!
 console.log(`speaker range: ${range.lo.toFixed(1)}..${range.hi.toFixed(1)} st (${(55 * 2 ** (range.lo / 12)).toFixed(0)}–${(55 * 2 ** (range.hi / 12)).toFixed(0)} Hz)`)
 
 // --- 3. validate -------------------------------------------------------------
@@ -155,22 +172,37 @@ for (const c of candidates) {
       const c5 = syllableContour(chao, seg.segments[i], 5, 0.1)
       if (!c5) { bad += 1; return }
       const r = recognizeTone(c5, i === surface.length - 1)
-      if (r.tone !== t && r.confidence > 0.5) bad++
+      if (r.tone !== t && r.confidence > (FILL ? 0.8 : 0.5)) bad++
     })
     if (bad < bestBad) { bestBad = bad; bestSurface = surface }
   }
-  if (bestBad > 0) { reject('tone mismatch'); continue }
+  if (bestBad > 0 && !(FILL && FILL_TRUST.has(c.hanzi))) {
+    if (process.env.DEBUG_FILL) console.log('reject', c.hanzi, c.alternatives.map((a) => a.join('')).join('/'), seg.segments.map((sg) => { const c5 = syllableContour(chao, sg, 5, 0.1); return c5 ? recognizeTone(c5, false).tone : '?' }).join(''))
+    reject('tone mismatch')
+    continue
+  }
   if (!accepted.has(c.combo)) accepted.set(c.combo, [])
   accepted.get(c.combo)!.push({ c, seg, surface: bestSurface! })
 }
 
 // --- 4. select + write -------------------------------------------------------
-rmSync(OUT, { recursive: true, force: true })
+if (!FILL) rmSync(OUT, { recursive: true, force: true })
 mkdirSync(join(OUT, 'audio'), { recursive: true })
-const items: BankItem[] = []
+const items: BankItem[] = existing ? [...existing.items] : []
 const round1 = (x: number) => Math.round(x * 10) / 10
 for (const [combo, list] of [...accepted].sort(([a], [b]) => a.localeCompare(b))) {
-  const keep = pickCandidates(list.map((a) => a.c), CAPS[list[0].c.kind].keep)
+  let keep = pickCandidates(list.map((a) => a.c), CAPS[list[0].c.kind].keep)
+  if (FILL) {
+    // Per pronounced pattern, only as many as are missing.
+    const added = new Map<string, number>()
+    keep = pickCandidates(list.map((a) => a.c), list.length).filter((c) => {
+      const key = list.find((x) => x.c === c)!.surface.join('')
+      const have = coverage(key) + (added.get(key) ?? 0)
+      if (have >= MIN_PER_PATTERN) return false
+      added.set(key, (added.get(key) ?? 0) + 1)
+      return true
+    })
+  }
   for (const c of keep) {
     const a = list.find((x) => x.c === c)!
     const track = tracks.get(c)!
@@ -192,7 +224,9 @@ for (const [combo, list] of [...accepted].sort(([a], [b]) => a.localeCompare(b))
   }
 }
 
-const manifest: Manifest = {
+const manifest: Manifest = existing
+  ? { ...existing, items }
+  : {
   version: 1,
   speakers: {
     yue: {

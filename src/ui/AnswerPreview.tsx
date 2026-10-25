@@ -43,7 +43,15 @@ export function AnswerPreview({ chosen, exclude, syllables }: Props) {
       .sort((a, b) => b.score - a.score || a.r - b.r)
       .map((x) => x.i)
   }, [manifest, chosen, exclude, syllables])
-  const item: BankItem | null = matches.length ? matches[round % matches.length] : null
+  // Two 3rd tones in a row are never pronounced as 3-3 (the first becomes a 2nd tone), so there is no
+  // recording of that surface pattern. Offer a word that is *written* with these tones instead.
+  const written = useMemo(
+    () => (matches.length ? [] : (manifest?.items ?? []).filter((i) => same(i.lexical, chosen) && i.id !== exclude)),
+    [manifest, matches, chosen, exclude],
+  )
+  const pool = matches.length ? matches : written
+  const item: BankItem | null = pool.length ? pool[round % pool.length] : null
+  const isWritten = !matches.length && !!item
   const sharedCount = item && syllables ? item.syllables.filter((s, k) => plain(s) === plain(syllables[k] ?? '')).length : 0
   const range = manifest ? Object.values(manifest.speakers)[0].range : null
 
@@ -66,9 +74,15 @@ export function AnswerPreview({ chosen, exclude, syllables }: Props) {
 
   return (
     <div className="preview">
-      <h3>Your answer ({label}) sounds like this</h3>
+      <h3>{isWritten ? `A word written ${label}` : `Your answer (${label}) sounds like this`}</h3>
       {item ? (
         <>
+          {isWritten && (
+            <p className="small">
+              Two 3rd tones in a row are never pronounced 3-3: the first becomes a 2nd tone, so there is no recording of a spoken {label}.
+              This word is <em>written</em> {label}, and this is how it really sounds.
+            </p>
+          )}
           <p>
             <span className="hanzi-sm">{item.hanzi}</span>{' '}
             <span className="pinyin">
@@ -91,7 +105,7 @@ export function AnswerPreview({ chosen, exclude, syllables }: Props) {
       )}
       <div className="controls ear-controls">
         <button className="primary" onClick={play} disabled={playing}>▶ Play {label}</button>
-        {matches.length > 1 && (
+        {pool.length > 1 && (
           <button onClick={() => setRound((r) => r + 1)} disabled={playing}>Another {label}</button>
         )}
       </div>

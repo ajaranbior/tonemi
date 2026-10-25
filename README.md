@@ -1,6 +1,8 @@
 # tonemi
 
-A personal Mandarin tone **production** trainer. Runs entirely in the browser
+**▶ Live app: <https://ajaranbior.github.io/tonemi/>**
+
+A personal Mandarin tone **production and recognition** trainer. Runs entirely in the browser
 (no server), works on phones, and can be hosted on GitHub Pages.
 
 - **Drills** — 1, 2 and 3-syllable words for every tone combination (all 20

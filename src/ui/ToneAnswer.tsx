@@ -1,14 +1,8 @@
 import type { Tone } from '../analysis/tones'
 import type { Grade } from '../ear/adapt'
-import { toneName } from './tone'
+import { ToneChip, ToneGlyph } from './ToneGlyph'
 
-const OPTIONS: [Tone, string][] = [
-  [1, '¯'],
-  [2, 'ˊ'],
-  [3, 'ˇ'],
-  [4, 'ˋ'],
-  [0, '·'],
-]
+const OPTIONS: Tone[] = [1, 2, 3, 4, 0]
 const ORDINAL = ['1st', '2nd', '3rd', '4th', '5th', '6th']
 
 interface Props {
@@ -31,7 +25,7 @@ export function ToneAnswer({ chosen, expected, onPick }: Props) {
           ) : (
             <span className="muted small">{chosen.length > 1 ? ORDINAL[i] : ''}</span>
           )}
-          {OPTIONS.map(([tone, mark]) => {
+          {OPTIONS.map((tone) => {
             const state = expected
               ? tone === expected[i]
                 ? 'ok'
@@ -50,8 +44,8 @@ export function ToneAnswer({ chosen, expected, onPick }: Props) {
                 aria-label={`${ORDINAL[i]} syllable: ${tone === 0 ? 'neutral tone' : `tone ${tone}`}`}
                 onClick={() => onPick(i, tone)}
               >
-                <strong>{tone === 0 ? '–' : tone}</strong>
-                <span aria-hidden="true">{mark}</span>
+                <strong>{tone === 0 ? '5' : tone}</strong>
+                <ToneGlyph tone={tone} />
               </button>
             )
           })}
@@ -79,13 +73,18 @@ export function Verdict({ syllables, expected, lexical, chosen }: VerdictProps) 
           <li key={i} className={`verdict-row ${ok ? 'ok' : 'bad'}`}>
             <span className="verdict-mark" aria-label={ok ? 'correct' : 'wrong'}>{ok ? '✓' : '✗'}</span>
             <span className={`syl t${expected[i]}`}>{s}</span>
-            <span className={ok ? 'muted small' : 'bad small'}>
-              {ok ? toneName(expected[i]) : `you said ${toneName(chosen[i] ?? 0)} · it is ${toneName(expected[i])}`}
-            </span>
+            {ok ? (
+              <ToneChip tone={expected[i]} />
+            ) : (
+              <div className="compare">
+                <div><small>target</small><ToneChip tone={expected[i]} /></div>
+                <div><small>you</small><ToneChip tone={chosen[i] ?? 0} /></div>
+              </div>
+            )}
             {sandhi && (
               <div className="small notes">
                 {chosen[i] === lexical![i] && !ok ? 'Tone sandhi: ' : 'Sandhi: '}
-                written {toneName(lexical![i])}, pronounced {toneName(expected[i])}.
+                written {lexical![i] === 0 ? 'neutral' : `tone ${lexical![i]}`}, pronounced {expected[i] === 0 ? 'neutral' : `tone ${expected[i]}`}.
               </div>
             )}
           </li>
@@ -97,12 +96,10 @@ export function Verdict({ syllables, expected, lexical, chosen }: VerdictProps) 
 
 /** Big coloured result strip; the pop/shake animation restarts whenever it mounts. */
 export function ResultBanner({ grade, accepted }: { grade: Grade; accepted?: boolean }) {
-  const right = grade.correct.filter(Boolean).length
-  const n = grade.correct.length
   return (
     <div className={`result ${grade.all || accepted ? 'ok' : 'bad'}`} role="status">
       <span>{accepted ? '✓ Marked correct' : grade.all ? '✓ Correct' : '✗ Not quite'}</span>
-      {accepted ? <small>you overruled the key</small> : n > 1 && <small>{right} of {n} right</small>}
+      {accepted && <small>you overruled the key</small>}
     </div>
   )
 }

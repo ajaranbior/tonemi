@@ -10,6 +10,16 @@ export function updateStat(prev: EarStat | undefined, allCorrect: boolean): EarS
   return { n: (prev?.n ?? 0) + 1, ema: (1 - ALPHA) * ema + ALPHA * (allCorrect ? 1 : 0) }
 }
 
+/**
+ * Re-score one past trial after the learner overruled (or un-overruled) the answer key. A trial
+ * contributes ALPHA·(1-ALPHA)^later to the moving average, where `later` counts newer trials of the
+ * same pattern, so its result can be flipped without replaying history.
+ */
+export function adjustStat(stat: EarStat, later: number, toCorrect: boolean): EarStat {
+  const weight = ALPHA * (1 - ALPHA) ** later
+  return { n: stat.n, ema: Math.min(1, Math.max(0, stat.ema + (toCorrect ? weight : -weight))) }
+}
+
 /** Sampling weight: weak and untried combos come up most; mastered ones still appear. */
 export function comboWeight(stat: EarStat | undefined): number {
   const acc = stat ? stat.ema : PRIOR

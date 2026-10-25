@@ -26,9 +26,9 @@ export function EarPage() {
     setTick((t) => t + 1)
   }, [])
 
-  // The learner overruled the key: the last miss counts as a hit.
-  const overridden = useCallback(() => {
-    setSession((s) => ({ ...s, ok: s.ok + 1 }))
+  // The learner overruled the key (or took that back): a miss counts as a hit, or the reverse.
+  const overridden = useCallback((delta: 1 | -1) => {
+    setSession((s) => ({ ...s, ok: s.ok + delta }))
     setTick((t) => t + 1)
   }, [])
 

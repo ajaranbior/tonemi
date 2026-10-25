@@ -5,8 +5,8 @@ import { playUrl, stopPlayback } from '../audio/playback'
 import { audioUrl, loadManifest, refChao } from '../bank/load'
 import type { BankItem, ItemKind, Manifest } from '../bank/types'
 import { clearRetry, dueRetry, grade, pickByCombo, scheduleRetry, updateStat, type Retry } from '../ear/adapt'
-import type { EarStat } from '../store'
-import { addEarConfusion, getEarCombos, getPref, removeEarConfusion, setEarCombo, setPref } from '../store'
+import { overrule, type TrialRecord } from '../ear/overrule'
+import { addEarConfusion, getEarCombos, getPref, setEarCombo, setPref } from '../store'
 import { Toggle } from './Toggle'
 import { PitchPlot, type PlotLine } from './PitchPlot'
 import { answerOverlay } from './earPlot'
@@ -24,7 +24,7 @@ const comboKey = (i: BankItem) => i.surface.join('')
 
 interface Props {
   onAnswered: (correct: boolean) => void
-  onOverride: () => void
+  onOverride: (delta: 1 | -1) => void
 }
 
 export function EarBank({ onAnswered, onOverride }: Props) {
@@ -38,7 +38,7 @@ export function EarBank({ onAnswered, onOverride }: Props) {
   const [playing, setPlaying] = useState(false)
   const [cursor, setCursor] = useState<number | undefined>()
   const [accepted, setAccepted] = useState(false)
-  const lastRec = useRef<{ key: string; prev: EarStat | undefined; conf: string[] } | null>(null)
+  const lastRec = useRef<TrialRecord | null>(null)
   const [sound, setSound] = useState(() => getPref<boolean>('ear.sound', true))
   const [autoReveal, setAutoReveal] = useState(() => getPref<boolean>('ear.auto', true))
   const review = useReview<BankItem>()
@@ -65,7 +65,7 @@ export function EarBank({ onAnswered, onOverride }: Props) {
         pick = pickByCombo(pool, comboKey, getEarCombos())
       }
       if (!pick) return
-      if (item && answered) review.record({ item, chosen, accepted })
+      if (item && answered) review.record({ item, chosen, accepted, rec: lastRec.current ?? undefined })
       review.leave()
       setAccepted(false)
       lastRec.current = null
@@ -85,6 +85,8 @@ export function EarBank({ onAnswered, onOverride }: Props) {
   const shown = rv ? rv.item : item
   const shownChosen = rv ? rv.chosen : chosen
   const shownAnswered = rv ? true : answered
+
+  const wrong = !!shown && shownAnswered && !grade(shown.surface, shownChosen).all
 
   const listen = useCallback(
     async (rate = 1) => {
@@ -120,7 +122,7 @@ export function EarBank({ onAnswered, onOverride }: Props) {
     const g = grade(item.surface, answers)
     const key = comboKey(item)
     const conf = item.surface.flatMap((t, i) => (g.correct[i] ? [] : [`${t}>${answers[i]}`]))
-    lastRec.current = { key, prev: getEarCombos()[key], conf }
+    lastRec.current = { key, conf }
     setEarCombo(key, updateStat(getEarCombos()[key], g.all))
     conf.forEach(addEarConfusion)
     trial.current++
@@ -131,16 +133,27 @@ export function EarBank({ onAnswered, onOverride }: Props) {
     if (!g.all) setTimeout(() => void listen(), sound ? FEEDBACK_SECONDS * 1000 : 0)
   }, [item, answered, chosen, onAnswered, listen, sound])
 
-  /** The learner disagrees with the answer key: count this trial as correct. */
-  const accept = useCallback(() => {
-    const rec = lastRec.current
-    if (!item || !answered || accepted || !rec) return
-    setEarCombo(rec.key, updateStat(rec.prev, true))
-    rec.conf.forEach(removeEarConfusion)
-    retry.current = clearRetry(retry.current, item.id)
-    setAccepted(true)
-    onOverride()
-  }, [item, answered, accepted, onOverride])
+  /** The learner disagrees with the answer key (or takes that back): flip this trial's result. */
+  const toggleAccept = useCallback(() => {
+    if (rv && review.index !== null) {
+      if (!rv.rec) return
+      const key = rv.rec.key
+      const later = review.history.slice(review.index + 1).filter((t) => t.rec?.key === key).length + (answered && lastRec.current?.key === key ? 1 : 0)
+      const now = !rv.accepted
+      overrule(rv.rec, later, now)
+      review.update(review.index, { accepted: now })
+      if (now) retry.current = clearRetry(retry.current, rv.item.id)
+      onOverride(now ? 1 : -1)
+    } else {
+      const rec = lastRec.current
+      if (!item || !answered || !rec) return
+      const now = !accepted
+      overrule(rec, 0, now)
+      if (now) retry.current = clearRetry(retry.current, item.id)
+      setAccepted(now)
+      onOverride(now ? 1 : -1)
+    }
+  }, [rv, review, item, answered, accepted, onOverride])
 
   /** Backspace: take back the last tone entered. */
   const undo = useCallback(() => {
@@ -184,8 +197,8 @@ export function EarBank({ onAnswered, onOverride }: Props) {
       } else if (e.key === 'Backspace') {
         e.preventDefault()
         undo()
-      } else if ((e.key === 'm' || e.key === 'M') && !rv && answered && !accepted) {
-        accept()
+      } else if ((e.key === 'm' || e.key === 'M') && wrong) {
+        toggleAccept()
       } else if (e.key === ' ' || e.key === 'r' || e.key === 'R') {
         e.preventDefault()
         if (!e.repeat) void listen()
@@ -202,7 +215,7 @@ export function EarBank({ onAnswered, onOverride }: Props) {
       window.removeEventListener('keydown', onKey)
       window.removeEventListener('keyup', onUp)
     }
-  }, [item, shownAnswered, chosen, advance, check, listen, pick, review, autoReveal, undo, accept, accepted, rv, answered])
+  }, [item, shownAnswered, chosen, advance, check, listen, pick, review, autoReveal, undo, toggleAccept, wrong])
 
   const refRange: SpeakerRange | null = manifest && shown ? manifest.speakers[shown.speaker].range : null
   const complete = chosen.length > 0 && chosen.every((c) => c !== null)
@@ -269,8 +282,8 @@ export function EarBank({ onAnswered, onOverride }: Props) {
             <button className="primary" onClick={advance} disabled={!shownAnswered}>Next →</button>
           )}
         </div>
-        {!rv && g && !g.all && !accepted && (
-          <button className="link small" onClick={accept}>I was right — mark my answer as correct (M)</button>
+        {g && !g.all && (
+          <button className="link small" onClick={toggleAccept}>{(rv ? !!rv.accepted : accepted) ? 'Undo: count this as incorrect again (M)' : 'I was right — mark my answer as correct (M)'}</button>
         )}
       </section>
 

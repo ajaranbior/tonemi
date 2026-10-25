@@ -10,9 +10,10 @@ import { decodeTo16k } from '../audio/resample'
 import { playSpan, stopSpan } from '../audio/span'
 import { buildClips, cueCharTimes, frameTime, hanIndex } from '../ear/chunks'
 import { clearRetry, dueRetry, grade, pickByCombo, scheduleRetry, updateStat, type Retry } from '../ear/adapt'
-import { markTone, sentenceTones } from '../g2p/tones'
-import type { EarStat } from '../store'
-import { addEarConfusion, getEarCombos, getPref, removeEarConfusion, setEarCombo, setPref } from '../store'
+import { sentenceTones } from '../g2p/tones'
+import { markedSyllable } from './tone'
+import { overrule, type TrialRecord } from '../ear/overrule'
+import { addEarConfusion, getEarCombos, getPref, setEarCombo, setPref } from '../store'
 import { parseSubtitles, type Cue } from '../subtitles'
 import { Toggle } from './Toggle'
 import { PitchPlot, type PlotLine } from './PitchPlot'
@@ -46,7 +47,7 @@ const PAD_AFTER = 0.1
 
 interface Props {
   onAnswered: (correct: boolean) => void
-  onOverride: () => void
+  onOverride: (delta: 1 | -1) => void
 }
 
 export default function EarClips({ onAnswered, onOverride }: Props) {
@@ -64,7 +65,7 @@ export default function EarClips({ onAnswered, onOverride }: Props) {
   const [playing, setPlaying] = useState(false)
   const [cursor, setCursor] = useState<number | undefined>()
   const [accepted, setAccepted] = useState(false)
-  const lastRec = useRef<{ key: string; prev: EarStat | undefined; conf: string[] } | null>(null)
+  const lastRec = useRef<TrialRecord | null>(null)
   const [sound, setSound] = useState(() => getPref<boolean>('ear.sound', true))
   const [autoReveal, setAutoReveal] = useState(() => getPref<boolean>('ear.auto', true))
   const review = useReview<Clip>()
@@ -146,7 +147,7 @@ export default function EarClips({ onAnswered, onOverride }: Props) {
           h1,
           tones: tt,
           lexical: lexical.slice(r.from, r.to) as Tone[],
-          pinyin: tt.map((tone, i) => markTone((syl[h0 + i] ?? '').replace(/v/g, 'ü'), tone)),
+          pinyin: tt.map((tone, i) => markedSyllable((syl[h0 + i] ?? '').replace(/v/g, 'ü'), tone)),
           syllables: tt.map((_, i) => (syl[h0 + i] ?? '').replace(/ü/g, 'v')),
           key: tt.join(''),
         })
@@ -176,7 +177,7 @@ export default function EarClips({ onAnswered, onOverride }: Props) {
         pick = pickByCombo(pool, (c) => c.key, getEarCombos())
       }
       if (!pick) return
-      if (clip && answered) review.record({ item: clip, chosen, accepted })
+      if (clip && answered) review.record({ item: clip, chosen, accepted, rec: lastRec.current ?? undefined })
       review.leave()
       setAccepted(false)
       lastRec.current = null
@@ -235,7 +236,7 @@ export default function EarClips({ onAnswered, onOverride }: Props) {
     if (!clip || answered || answers.some((c) => c === null)) return
     const g = grade(clip.tones, answers)
     const conf = clip.tones.flatMap((t, i) => (g.correct[i] ? [] : [`${t}>${answers[i]}`]))
-    lastRec.current = { key: clip.key, prev: getEarCombos()[clip.key], conf }
+    lastRec.current = { key: clip.key, conf }
     setEarCombo(clip.key, updateStat(getEarCombos()[clip.key], g.all))
     conf.forEach(addEarConfusion)
     trial.current++
@@ -246,16 +247,33 @@ export default function EarClips({ onAnswered, onOverride }: Props) {
     if (!g.all) setTimeout(() => void play(clip), sound ? FEEDBACK_SECONDS * 1000 : 0)
   }, [clip, answered, chosen, onAnswered, play, sound])
 
-  /** The learner disagrees with the answer key: count this trial as correct. */
-  const accept = useCallback(() => {
-    const rec = lastRec.current
-    if (!clip || !answered || accepted || !rec) return
-    setEarCombo(rec.key, updateStat(rec.prev, true))
-    rec.conf.forEach(removeEarConfusion)
-    retry.current = clearRetry(retry.current, clip.id)
-    setAccepted(true)
-    onOverride()
-  }, [clip, answered, accepted, onOverride])
+  const rv = review.reviewing
+  const sClip = rv ? rv.item : clip
+  const sChosen = rv ? rv.chosen : chosen
+  const sAnswered = rv ? true : answered
+  const wrong = !!sClip && sAnswered && !grade(sClip.tones, sChosen).all
+
+  /** The learner disagrees with the answer key (or takes that back): flip this trial's result. */
+  const toggleAccept = useCallback(() => {
+    if (rv && review.index !== null) {
+      if (!rv.rec) return
+      const key = rv.rec.key
+      const later = review.history.slice(review.index + 1).filter((t) => t.rec?.key === key).length + (answered && lastRec.current?.key === key ? 1 : 0)
+      const now = !rv.accepted
+      overrule(rv.rec, later, now)
+      review.update(review.index, { accepted: now })
+      if (now) retry.current = clearRetry(retry.current, rv.item.id)
+      onOverride(now ? 1 : -1)
+    } else {
+      const rec = lastRec.current
+      if (!clip || !answered || !rec) return
+      const now = !accepted
+      overrule(rec, 0, now)
+      if (now) retry.current = clearRetry(retry.current, clip.id)
+      setAccepted(now)
+      onOverride(now ? 1 : -1)
+    }
+  }, [rv, review, clip, answered, accepted, onOverride])
 
   /** Backspace: take back the last tone entered. */
   const undo = useCallback(() => {
@@ -276,10 +294,6 @@ export default function EarClips({ onAnswered, onOverride }: Props) {
     [answered, chosen, autoReveal, check],
   )
 
-  const rv = review.reviewing
-  const sClip = rv ? rv.item : clip
-  const sChosen = rv ? rv.chosen : chosen
-  const sAnswered = rv ? true : answered
   const advance = useCallback(() => {
     if (rv) review.forward()
     else next(clip)
@@ -303,8 +317,8 @@ export default function EarClips({ onAnswered, onOverride }: Props) {
       } else if (e.key === 'Backspace') {
         e.preventDefault()
         undo()
-      } else if ((e.key === 'm' || e.key === 'M') && !rv && answered && !accepted) {
-        accept()
+      } else if ((e.key === 'm' || e.key === 'M') && wrong) {
+        toggleAccept()
       } else if (e.key === ' ' || e.key === 'r' || e.key === 'R') {
         e.preventDefault()
         if (!e.repeat) void play(sClip)
@@ -321,7 +335,7 @@ export default function EarClips({ onAnswered, onOverride }: Props) {
       window.removeEventListener('keydown', onKey)
       window.removeEventListener('keyup', onUp)
     }
-  }, [clip, sClip, sAnswered, chosen, advance, check, play, pick, review, autoReveal, undo, accept, accepted, rv, answered])
+  }, [clip, sClip, sAnswered, chosen, advance, check, play, pick, review, autoReveal, undo, toggleAccept, wrong])
 
   const complete = chosen.length > 0 && chosen.every((c) => c !== null)
   const g = sClip && sAnswered ? grade(sClip.tones, sChosen) : null
@@ -407,8 +421,8 @@ export default function EarClips({ onAnswered, onOverride }: Props) {
                 <button className="primary" onClick={advance} disabled={!sAnswered}>Next →</button>
               )}
             </div>
-            {!rv && g && !g.all && !accepted && (
-              <button className="link small" onClick={accept}>I was right — mark my answer as correct (M)</button>
+            {g && !g.all && (
+              <button className="link small" onClick={toggleAccept}>{(rv ? !!rv.accepted : accepted) ? 'Undo: count this as incorrect again (M)' : 'I was right — mark my answer as correct (M)'}</button>
             )}
             {!sAnswered && <button className="link small" onClick={() => next(clip)}>Skip (clip cut badly / audio unclear)</button>}
           </section>

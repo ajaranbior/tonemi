@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { clearRetry, comboWeight, dueRetry, grade, pickByCombo, scheduleRetry, topConfusions, updateStat } from './adapt'
+import { adjustStat, clearRetry, comboWeight, dueRetry, grade, pickByCombo, scheduleRetry, topConfusions, updateStat } from './adapt'
 
 describe('ear adaptation', () => {
   it('moves accuracy toward results and weights weak combos higher', () => {
@@ -29,6 +29,14 @@ describe('ear adaptation', () => {
     expect(dueRetry(q, 8, () => false)).toBeUndefined()
     q = clearRetry(q, 'a')
     expect(dueRetry(q, 99, () => true)).toBeUndefined()
+  })
+
+  it('flips a past trial exactly as if it had been answered differently', () => {
+    const replay = (results: boolean[]) => results.reduce<ReturnType<typeof updateStat> | undefined>((s, r) => updateStat(s, r), undefined)!
+    const actual = replay([false, true, true, false])
+    const fixed = adjustStat(actual, 3, true) // three newer trials of the same pattern
+    expect(fixed.ema).toBeCloseTo(replay([true, true, true, false]).ema, 10)
+    expect(adjustStat(fixed, 3, false).ema).toBeCloseTo(actual.ema, 10)
   })
 
   it('grades per syllable and ranks confusions', () => {

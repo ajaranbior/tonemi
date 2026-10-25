@@ -218,3 +218,11 @@ button.link { min-height: 0; padding: 0; border: 0; background: none; color: var
 .verdict-row.ok { background: color-mix(in srgb, var(--good) 14%, var(--card)); }
 .verdict-row.bad { background: color-mix(in srgb, var(--bad) 16%, var(--card)); }
 .verdict-mark { font-size: 1.4rem; font-weight: 800; min-width: 1.4em; text-align: center; }
+
+.glyph { flex: none; }
+.tone-chip { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 0.9rem; }
+.compare { display: flex; flex-direction: column; gap: 4px; flex: 1 1 100%; }
+.compare > div { display: flex; align-items: center; gap: 10px; }
+.compare small { width: 44px; color: var(--muted); text-transform: uppercase; font-size: 0.65rem; letter-spacing: 0.05em; }
+.tone-btn svg { margin-top: 2px; }
+.tone-chip span:last-child { color: var(--fg); }

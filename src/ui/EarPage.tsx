@@ -40,14 +40,6 @@ export function EarPage() {
 
   return (
     <div className="page">
-      <div className="segmented" role="tablist" aria-label="Ear training source">
-        <button role="tab" aria-selected={mode === 'words'} className={mode === 'words' ? 'active' : ''} onClick={() => choose('words')}>
-          📚 Words
-        </button>
-        <button role="tab" aria-selected={mode === 'video'} className={mode === 'video' ? 'active' : ''} onClick={() => choose('video')}>
-          🎬 Video / audio
-        </button>
-      </div>
 
       {mode === 'words' ? (
         <EarBank onAnswered={answered} onOverride={overridden} />
@@ -56,6 +48,18 @@ export function EarPage() {
           <EarClips onAnswered={answered} onOverride={overridden} />
         </Suspense>
       )}
+
+      <div className="options">
+        <p className="muted small">Practice with</p>
+      <div className="segmented compact" role="tablist" aria-label="Ear training source">
+        <button role="tab" aria-selected={mode === 'words'} className={mode === 'words' ? 'active' : ''} onClick={() => choose('words')}>
+          📚 Words
+        </button>
+        <button role="tab" aria-selected={mode === 'video'} className={mode === 'video' ? 'active' : ''} onClick={() => choose('video')}>
+          🎬 Video / audio
+        </button>
+      </div>
+      </div>
 
       <EarStats session={session} tick={tick} onReset={() => { resetEar(); setTick((t) => t + 1) }} />
     </div>

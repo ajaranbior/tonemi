@@ -238,3 +238,9 @@ button.link { min-height: 0; padding: 0; border: 0; background: none; color: var
 .stat-bar > span { display: block; height: 100%; border-radius: 6px; }
 .stat-pct { text-align: right; font-variant-numeric: tabular-nums; }
 .mixup { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+
+/* Secondary selectors sit below the exercise and stay quiet */
+.options { padding: 0 4px; }
+.options > p { margin: 4px 2px; }
+.segmented.compact { padding: 3px; border-radius: 10px; }
+.segmented.compact button { min-height: 32px; font-size: 0.8rem; padding: 4px 6px; }

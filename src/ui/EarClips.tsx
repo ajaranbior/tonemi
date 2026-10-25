@@ -369,20 +369,7 @@ export default function EarClips({ onAnswered, onOverride }: Props) {
 
       {ready && sClip && (
         <>
-          <div className="segmented" role="tablist" aria-label="Clip size">
-            {SIZES.map(([n, label]) => (
-              <button
-                key={n}
-                role="tab"
-                aria-selected={words === String(n)}
-                className={words === String(n) ? 'active' : ''}
-                onClick={() => { setWords(String(n)); setPref('ear.words', String(n)); setClip(null) }}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-
+          
           <section className={`card ${g ? (g.all || (rv ? !!rv.accepted : accepted) ? 'flash-ok' : 'flash-bad') : ''}`}>
             {g && <ResultBanner key={sClip.id + sChosen.join('') + String((rv ? !!rv.accepted : accepted))} grade={g} accepted={(rv ? !!rv.accepted : accepted)} />}
             <div className="item-head">
@@ -436,7 +423,24 @@ export default function EarClips({ onAnswered, onOverride }: Props) {
             </section>
           )}
 
-          <details className="card settings">
+          <div className="options">
+<p className="muted small">Clip size</p>
+<div className="segmented compact" role="tablist" aria-label="Clip size">
+            {SIZES.map(([n, label]) => (
+              <button
+                key={n}
+                role="tab"
+                aria-selected={words === String(n)}
+                className={words === String(n) ? 'active' : ''}
+                onClick={() => { setWords(String(n)); setPref('ear.words', String(n)); setClip(null) }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+</div>
+<details className="card settings">
             <summary>Video settings</summary>
             <Toggle label="Sound effects and vibration for right/wrong" value={sound} onChange={(v) => { setSound(v); setPref('ear.sound', v) }} />
             <Toggle label="Reveal the answer as soon as all tones are chosen" value={autoReveal} onChange={(v) => { setAutoReveal(v); setPref('ear.auto', v) }} />

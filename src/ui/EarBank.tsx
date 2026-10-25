@@ -234,14 +234,7 @@ export function EarBank({ onAnswered, onOverride }: Props) {
 
   return (
     <>
-      <div className="segmented" role="tablist" aria-label="Word length">
-        {KINDS.map(([k, label]) => (
-          <button key={k} role="tab" aria-selected={kind === k} className={kind === k ? 'active' : ''} onClick={() => choose(k)}>
-            {label}
-          </button>
-        ))}
-      </div>
-
+      
       <section className={`card ${g ? (g.all || (rv ? !!rv.accepted : accepted) ? 'flash-ok' : 'flash-bad') : ''}`}>
         {rv && <div className="banner">Reviewing an earlier word ({(review.index ?? 0) + 1} of {review.count})</div>}
         {g && <ResultBanner key={shown.id + shownChosen.join('') + String((rv ? !!rv.accepted : accepted))} grade={g} accepted={(rv ? !!rv.accepted : accepted)} />}
@@ -294,7 +287,18 @@ export function EarBank({ onAnswered, onOverride }: Props) {
         </section>
       )}
 
-      <details className="card settings">
+      <div className="options">
+<p className="muted small">Word length</p>
+<div className="segmented compact" role="tablist" aria-label="Word length">
+        {KINDS.map(([k, label]) => (
+          <button key={k} role="tab" aria-selected={kind === k} className={kind === k ? 'active' : ''} onClick={() => choose(k)}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+</div>
+<details className="card settings">
         <summary>Ear settings</summary>
         <Toggle label="Sound effects and vibration for right/wrong" value={sound} onChange={(v) => { setSound(v); setPref('ear.sound', v) }} />
         <Toggle label="Reveal the answer as soon as all tones are chosen" value={autoReveal} onChange={(v) => { setAutoReveal(v); setPref('ear.auto', v) }} />

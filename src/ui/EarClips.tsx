@@ -1,0 +1,417 @@
+import { pinyin as toPinyin } from 'pinyin-pro'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { chaoTrack, rangeFromSemitones } from '../analysis/normalize'
+import { hzToSt, type PitchTrack } from '../analysis/pitch'
+import { segmentSyllables, type Segment } from '../analysis/segment'
+import type { Tone } from '../analysis/tones'
+import { trackInWorker } from '../analysis/trackInWorker'
+import { audioContext } from '../audio/context'
+import { decodeTo16k } from '../audio/resample'
+import { playSpan, stopSpan } from '../audio/span'
+import { buildClips, cueCharTimes, frameTime, hanIndex } from '../ear/chunks'
+import { clearRetry, dueRetry, grade, pickByCombo, scheduleRetry, updateStat, type Retry } from '../ear/adapt'
+import { markTone, sentenceTones } from '../g2p/tones'
+import { addEarConfusion, getEarCombos, getPref, setEarCombo, setPref } from '../store'
+import { parseSubtitles, type Cue } from '../subtitles'
+import { Toggle } from './Toggle'
+import { PitchPlot, type PlotLine } from './PitchPlot'
+import { answerOverlay } from './earPlot'
+import { ToneAnswer, Verdict } from './ToneAnswer'
+
+interface Clip {
+  id: string
+  cue: number
+  /** Code-point range inside the cue text. */
+  from: number
+  to: number
+  hanzi: string
+  /** Han-character range inside the cue ("which character number"). */
+  h0: number
+  h1: number
+  tones: Tone[]
+  lexical: Tone[]
+  pinyin: string[]
+  key: string
+}
+
+const SIZES: [number, string][] = [[1, '1 word'], [2, '2 words'], [3, '3 words'], [0, 'Phrase']]
+const PAD_BEFORE = 0.06
+const PAD_AFTER = 0.1
+
+interface Props {
+  onAnswered: (correct: boolean) => void
+}
+
+export default function EarClips({ onAnswered }: Props) {
+  const [media, setMedia] = useState<{ url: string; video: boolean; name: string } | null>(null)
+  const [cues, setCues] = useState<Cue[]>([])
+  const [subName, setSubName] = useState<string | null>(null)
+  const [native, setNative] = useState<PitchTrack | null>(null)
+  const [status, setStatus] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [words, setWords] = useState(() => getPref<string>('ear.words', '2'))
+  const [showVideo, setShowVideo] = useState(() => getPref<boolean>('ear.video', false))
+  const [clip, setClip] = useState<Clip | null>(null)
+  const [chosen, setChosen] = useState<(Tone | null)[]>([])
+  const [answered, setAnswered] = useState(false)
+  const [playing, setPlaying] = useState(false)
+  const [cursor, setCursor] = useState<number | undefined>()
+  const mediaEl = useRef<HTMLVideoElement & HTMLAudioElement>(null)
+  const trial = useRef(0)
+  const retry = useRef<Retry[]>([])
+  const autoplay = useRef(false)
+
+  const loadFiles = async (files: FileList | null) => {
+    if (!files) return
+    setError(null)
+    for (const file of Array.from(files)) {
+      if (/\.(srt|vtt)$/i.test(file.name) || file.type === 'text/vtt') await loadSubs(file)
+      else await loadMedia(file)
+    }
+  }
+
+  const loadSubs = async (file: File) => {
+    const parsed = parseSubtitles(await file.text())
+    if (!parsed.length) {
+      setError('No cues found in that subtitle file (expected .srt or .vtt).')
+      return
+    }
+    setCues(parsed)
+    setSubName(file.name)
+    setClip(null)
+  }
+
+  const loadMedia = async (file: File) => {
+    setNative(null)
+    setClip(null)
+    stopSpan(mediaEl.current)
+    if (media) URL.revokeObjectURL(media.url)
+    setMedia({ url: URL.createObjectURL(file), video: file.type.startsWith('video'), name: file.name })
+    try {
+      setStatus('Decoding audio…')
+      const samples = await decodeTo16k(audioContext(), await file.arrayBuffer())
+      setStatus('Analysing pitch…')
+      setNative(await trackInWorker(samples))
+      setStatus(null)
+    } catch (e) {
+      setStatus(null)
+      setError(`Could not decode this file (${String(e)}). Try an mp3/m4a/mp4/webm.`)
+    }
+  }
+
+  // Cues worth training on: has Chinese, long enough, not a rolling-caption duplicate.
+  const usable = useMemo(() => {
+    const out: { cue: Cue; index: number }[] = []
+    cues.forEach((cue, index) => {
+      if (cue.end - cue.start < 0.4 || !/\p{Script=Han}/u.test(cue.text)) return
+      if (out.length && out[out.length - 1].cue.text === cue.text) return
+      out.push({ cue, index })
+    })
+    return out
+  }, [cues])
+
+  const clips = useMemo<Clip[]>(() => {
+    const n = Number(words)
+    const out: Clip[] = []
+    for (const { cue, index } of usable) {
+      const { chars, tones, lexical } = sentenceTones(cue.text)
+      const han = hanIndex(cue.text)
+      const syl = toPinyin(cue.text, { toneType: 'none', type: 'array', v: true, nonZh: 'removed' })
+      for (const r of buildClips(cue.text, n)) {
+        const h0 = han[r.from]
+        const h1 = han[r.to - 1]
+        const t = tones.slice(r.from, r.to)
+        if (t.some((x) => x === null)) continue
+        const tt = t as Tone[]
+        out.push({
+          id: `${index}:${r.from}-${r.to}`,
+          cue: index,
+          from: r.from,
+          to: r.to,
+          hanzi: chars.slice(r.from, r.to).join(''),
+          h0,
+          h1,
+          tones: tt,
+          lexical: lexical.slice(r.from, r.to) as Tone[],
+          pinyin: tt.map((tone, i) => markTone((syl[h0 + i] ?? '').replace(/v/g, 'ü'), tone)),
+          key: tt.join(''),
+        })
+      }
+    }
+    return out
+  }, [usable, words])
+
+  // Speaker range and Chao track from the voiced speech inside the cues.
+  const ready = useMemo(() => {
+    if (!native) return null
+    const st: number[] = []
+    const within = (i: number) => !cues.length || cues.some((c) => i * native.hop >= c.start && i * native.hop <= c.end)
+    native.hz.forEach((hz, i) => !Number.isNaN(hz) && within(i) && st.push(hzToSt(hz)))
+    const range = rangeFromSemitones(st)
+    return range ? { track: native, range, chao: chaoTrack(native, range) } : null
+  }, [native, cues])
+
+  const next = useCallback(
+    (avoid?: Clip | null, play = true) => {
+      if (!clips.length) return
+      const byId = new Map(clips.map((c) => [c.id, c]))
+      const due = dueRetry(retry.current, trial.current, (id) => byId.has(id) && id !== avoid?.id)
+      let pick = due ? byId.get(due) : undefined
+      if (!pick) {
+        const pool = clips.length > 1 && avoid ? clips.filter((c) => c.id !== avoid.id) : clips
+        pick = pickByCombo(pool, (c) => c.key, getEarCombos())
+      }
+      if (!pick) return
+      autoplay.current = play
+      setClip(pick)
+      setChosen(pick.tones.map(() => null))
+      setAnswered(false)
+    },
+    [clips],
+  )
+
+  useEffect(() => {
+    if (ready && clips.length && (!clip || !byIdHas(clips, clip))) next(null, false)
+  }, [ready, clips, clip, next])
+
+  /** [start, end] seconds of a clip, from the estimated character timing. */
+  const span = useCallback(
+    (c: Clip): [number, number] | null => {
+      if (!ready) return null
+      const cue = cues[c.cue]
+      const hop = ready.track.hop
+      const ct = cueCharTimes(ready.track, c.cue, Math.floor(cue.start / hop), Math.ceil(cue.end / hop), cue.text)
+      if (!ct) return [cue.start, cue.end]
+      return [Math.max(cue.start - 0.1, frameTime(ct.start[c.h0]) - PAD_BEFORE), Math.min(cue.end + 0.1, frameTime(ct.end[c.h1]) + PAD_AFTER)]
+    },
+    [ready, cues],
+  )
+
+  const play = useCallback(
+    async (c: Clip | null, rate = 1, whole = false) => {
+      const el = mediaEl.current
+      if (!c || !el) return
+      const s = whole ? ([cues[c.cue].start, cues[c.cue].end] as [number, number]) : span(c)
+      if (!s) return
+      setPlaying(true)
+      try {
+        await playSpan(el, s[0], s[1], rate, (t) => setCursor(Number.isNaN(t) ? undefined : t))
+      } catch (e) {
+        setError(String(e))
+      }
+      setPlaying(false)
+    },
+    [cues, span],
+  )
+
+  useEffect(() => {
+    if (clip && autoplay.current) {
+      autoplay.current = false
+      void play(clip)
+    }
+  }, [clip, play])
+  useEffect(() => () => stopSpan(mediaEl.current), [])
+
+  const pick = useCallback(
+    (i: number, tone: Tone) => {
+      if (!answered) setChosen((c) => c.map((x, k) => (k === i ? tone : x)))
+    },
+    [answered],
+  )
+
+  const check = useCallback(() => {
+    if (!clip || answered || chosen.some((c) => c === null)) return
+    const g = grade(clip.tones, chosen)
+    setEarCombo(clip.key, updateStat(getEarCombos()[clip.key], g.all))
+    clip.tones.forEach((t, i) => !g.correct[i] && addEarConfusion(`${t}>${chosen[i]}`))
+    trial.current++
+    retry.current = g.all ? clearRetry(retry.current, clip.id) : scheduleRetry(retry.current, clip.id, trial.current)
+    setAnswered(true)
+    onAnswered(g.all)
+  }, [clip, answered, chosen, onAnswered])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || !clip) return
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        if (answered) next(clip)
+        else check()
+      } else if (e.key === 'r' || e.key === 'R') void play(clip)
+      else if (!answered && /^[0-4]$/.test(e.key)) {
+        const i = chosen.findIndex((c) => c === null)
+        if (i >= 0 && !(i === 0 && e.key === '0')) pick(i, Number(e.key) as Tone)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [clip, answered, chosen, next, check, play, pick])
+
+  const complete = chosen.length > 0 && chosen.every((c) => c !== null)
+  const g = clip && answered ? grade(clip.tones, chosen) : null
+
+  return (
+    <>
+      <section className="card">
+        <h2>Train on a video</h2>
+        <label className="file">
+          <input type="file" multiple accept="audio/*,video/*,.srt,.vtt,text/vtt" onChange={(e) => { void loadFiles(e.target.files); e.target.value = '' }} />
+          <span>📂 Choose audio/video + subtitles</span>
+        </label>
+        <p className="muted small">
+          Select the media file and the .srt/.vtt together (or one after the other).
+        </p>
+        <p className="muted small">
+          {media ? `🎬 ${media.name}` : 'No audio/video yet'} · {subName ? `💬 ${subName} (${usable.length} lines)` : 'no subtitles yet'}
+        </p>
+        {status && <p className="muted small">{status}</p>}
+        {error && <p className="bad small">{error}</p>}
+        <YoutubeHelp />
+        {media &&
+          (media.video ? (
+            <video ref={mediaEl} src={media.url} playsInline className="media" hidden={!showVideo} />
+          ) : (
+            <audio ref={mediaEl} src={media.url} />
+          ))}
+      </section>
+
+      {media && cues.length > 0 && !ready && !status && !error && <div className="card">Waiting for pitch analysis…</div>}
+
+      {ready && clip && (
+        <>
+          <div className="segmented" role="tablist" aria-label="Clip size">
+            {SIZES.map(([n, label]) => (
+              <button
+                key={n}
+                role="tab"
+                aria-selected={words === String(n)}
+                className={words === String(n) ? 'active' : ''}
+                onClick={() => { setWords(String(n)); setPref('ear.words', String(n)); setClip(null) }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <section className="card">
+            <div className="item-head">
+              <div>
+                {answered ? (
+                  <>
+                    <div className="hanzi">{clip.hanzi}</div>
+                    <div className="pinyin">
+                      {clip.pinyin.map((s, i) => (
+                        <span key={i} className={`t${clip.tones[i]}`}>{s} </span>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="hanzi muted" aria-label="Clip text hidden">？</div>
+                )}
+              </div>
+              {g && <div className={`big-score ${g.all ? 'score-good' : 'score-bad'}`}>{g.all ? '✓' : '✗'}</div>}
+            </div>
+
+            <div className="controls ear-controls">
+              <button className="primary" onClick={() => play(clip)} disabled={playing}>▶ Clip</button>
+              <button onClick={() => play(clip, 0.6)} disabled={playing}>🐢 Slow</button>
+              <button onClick={() => play(clip, 1, true)} disabled={playing}>▶ Line</button>
+            </div>
+
+            <h3 className="ear-q">{answered ? 'Answer' : `Tones of the ${clip.tones.length} syllable${clip.tones.length > 1 ? 's' : ''}?`}</h3>
+            <ToneAnswer chosen={chosen} expected={answered ? clip.tones : undefined} onPick={pick} />
+            {!answered ? (
+              <button className="primary wide" onClick={check} disabled={!complete}>Check</button>
+            ) : (
+              <button className="primary wide" onClick={() => next(clip)}>Next →</button>
+            )}
+            <button className="link small" onClick={() => next(clip)}>Skip (clip cut badly / audio unclear)</button>
+          </section>
+
+          {answered && g && (
+            <section className="card">
+              <Verdict syllables={clip.pinyin} expected={clip.tones} lexical={clip.lexical} chosen={chosen} />
+              <p className="muted small">Line: {cues[clip.cue].text}</p>
+              <ClipChart clip={clip} chosen={chosen} ready={ready} span={span(clip)} cursor={cursor} />
+              {!g.all && <p className="muted small">Compare the grey line with the blue one: that is the difference your ear missed.</p>}
+              <p className="muted small">Answers are generated from the subtitle text, so rare readings can be wrong, and clip edges are estimated.</p>
+            </section>
+          )}
+
+          <details className="card settings">
+            <summary>Video settings</summary>
+            {media?.video && <Toggle label="Show video (may reveal burned-in subtitles)" value={showVideo} onChange={(v) => { setShowVideo(v); setPref('ear.video', v) }} />}
+            <p className="muted small">Pitch range is estimated from the speech in the subtitled lines; background music or several speakers make the chart less accurate.</p>
+          </details>
+        </>
+      )}
+    </>
+  )
+}
+
+const byIdHas = (clips: Clip[], c: Clip) => clips.some((x) => x.id === c.id)
+
+function ClipChart({ clip, chosen, ready, span, cursor }: { clip: Clip; chosen: (Tone | null)[]; ready: { track: PitchTrack; chao: Float32Array }; span: [number, number] | null; cursor?: number }) {
+  const { track, chao } = ready
+  const hop = track.hop
+  const view = useMemo(() => {
+    if (!span) return null
+    const a = Math.max(0, Math.floor((span[0] + PAD_BEFORE - 0.032) / hop))
+    const b = Math.min(chao.length, Math.ceil((span[1] - PAD_AFTER - 0.032) / hop))
+    if (b - a < 6) return null
+    const from = Math.max(0, a - 10)
+    const to = Math.min(chao.length, b + 10)
+    const slice: PitchTrack = {
+      hop,
+      hz: track.hz.subarray(a, b),
+      rms: track.rms.subarray(a, b),
+      zcr: track.zcr.subarray(a, b),
+      creak: track.creak.subarray(a, b),
+    }
+    const n = clip.tones.length
+    const seg = segmentSyllables(slice, n)
+    const segments: Segment[] = seg
+      ? seg.segments.map(([s, e]) => [s + a, e + a])
+      : Array.from({ length: n }, (_, i) => [Math.round(a + ((b - a) * i) / n), Math.round(a + ((b - a) * (i + 1)) / n)] as Segment)
+    return { from, to, segments }
+  }, [span, track, chao, hop, clip.tones.length])
+
+  if (!view) return <p className="muted small">Not enough voiced speech in this clip to draw a chart.</p>
+  const { from, to, segments } = view
+  const { labels, guess, boundaries } = answerOverlay(segments, clip.tones, chosen, clip.pinyin, hop, from)
+  const lines: PlotLine[] = [
+    { t: Array.from({ length: to - from }, (_, i) => i * hop), v: chao.subarray(from, to), kind: 'ref' },
+  ]
+  if (guess) lines.push(guess)
+  const playhead = cursor !== undefined && span ? cursor - from * hop - 0.032 : undefined
+  return (
+    <>
+      <PitchPlot lines={lines} duration={(to - from) * hop} labels={labels} boundaries={boundaries} cursor={playhead} />
+      <div className="legend">
+        <span className="key ref" /> speaker
+        {guess && (
+          <>
+            <span className="key user" /> shape of the tone you picked
+          </>
+        )}
+      </div>
+    </>
+  )
+}
+
+function YoutubeHelp() {
+  const [url, setUrl] = useState('')
+  const cmd = `yt-dlp -x --audio-format mp3 --write-subs --write-auto-subs --sub-langs "zh-Hans,zh-Hant,zh.*" --convert-subs srt ${url.trim() ? JSON.stringify(url.trim()) : '<URL>'}`
+  return (
+    <details className="settings">
+      <summary>Have a YouTube link?</summary>
+      <p className="muted small">
+        Browsers can't download YouTube audio, so fetch the audio and subtitles once on your computer, then pick both files above.
+        Nothing is uploaded; everything stays on this device.
+      </p>
+      <input className="text-input" type="url" placeholder="Paste a YouTube link" value={url} onChange={(e) => setUrl(e.target.value)} />
+      <code className="cmd">{cmd}</code>
+      <button onClick={() => navigator.clipboard?.writeText(cmd).catch(() => {})}>Copy command</button>
+    </details>
+  )
+}

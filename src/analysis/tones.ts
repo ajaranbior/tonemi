@@ -27,6 +27,11 @@ const TEMPLATES: Record<1 | 2 | 3 | 4, { final: number[][]; nonFinal: number[][]
   },
 }
 
+/** A representative 5-point Chao contour for a tone (what the textbook shape looks like). */
+export function toneTemplate(tone: 1 | 2 | 3 | 4, final: boolean): number[] {
+  return (final ? TEMPLATES[tone].final : TEMPLATES[tone].nonFinal)[0]
+}
+
 export interface Recognition {
   tone: 1 | 2 | 3 | 4
   /** 0..1, softmax over template distances. */

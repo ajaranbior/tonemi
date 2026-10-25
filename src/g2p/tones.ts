@@ -50,9 +50,16 @@ const SENTENCE_NEUTRAL = new Set([...'们么的了着吗呢吧啊呀嘛'])
  * Tones for running text (a subtitle line): lexical tones with neutral words
  * found by scanning, then sandhi. Non-Chinese characters get no tone.
  */
-export function sentenceTones(text: string): { chars: string[]; tones: (Tone | null)[]; approximate: boolean } {
+export function sentenceTones(text: string): {
+  chars: string[]
+  tones: (Tone | null)[]
+  /** Tones before sandhi (neutral tones applied). */
+  lexical: (Tone | null)[]
+  approximate: boolean
+} {
   const chars = [...text]
   const tones: (Tone | null)[] = chars.map(() => null)
+  const lexical: (Tone | null)[] = chars.map(() => null)
   let approximate = false
   const han = /\p{Script=Han}/u
   let i = 0
@@ -67,11 +74,12 @@ export function sentenceTones(text: string): { chars: string[]; tones: (Tone | n
       if (k > 0 && run[k] === '子' && lex[k] === 3) lex[k] = 0
     }
     const s = surfaceTones(run, lex)
+    lex.forEach((t, k) => (lexical[i + k] = t))
     approximate ||= s.approximate
     s.tones.forEach((t, k) => (tones[i + k] = t))
     i = j
   }
-  return { chars, tones, approximate }
+  return { chars, tones, lexical, approximate }
 }
 
 export interface SurfaceTones {

@@ -8,6 +8,14 @@ A personal Mandarin tone **production** trainer. Runs entirely in the browser
   pair combo. Listen → speak → see your pitch over the native contour, per-syllable
   scores, "heard" tone labels and notes. Slow playback, hum-back mode,
   smooth-consonant filter, and a "weakest combos first" mix driven by your scores.
+- **Ear** — tone *recognition*: hear a 1-, 2- or 3-syllable word (or a clip cut out of
+  your own video) and pick the tone of every syllable. Practice adapts to you: weak tone
+  patterns come up more often, missed items return a few trials later, and the progress
+  card lists your most-confused tone pairs. After each answer you see the speaker's real
+  pitch chart, and on a mistake the textbook shape of the tone you picked drawn over it.
+  *Video mode*: load audio/video plus `.srt`/`.vtt`, the lines are split into words
+  (`Intl.Segmenter`), clip boundaries are estimated from the pitch/energy of the audio,
+  and you train on 1–3 words or a whole phrase at a time.
 - **Shadowing** — load your own audio/video + `.srt`/`.vtt`, loop a line, echo
   it or shadow along; the whole-line melody is compared with DTW and scored.
   Subtitles show Mainland surface tones (一/不/3-3 sandhi, neutral tones).
@@ -35,9 +43,9 @@ The microphone needs HTTPS (or localhost). On iOS, audio starts only after a tap
 (**Settings → Pages → Source: Deploy from a branch → `gh-pages` / root**).
 Live at <https://ajaranbior.github.io/tonemi/>.
 
-### Shadowing a YouTube video
+### Using a YouTube video (Shadow and Ear)
 
-Download the audio and Chinese subtitles locally, then load both files:
+Browsers can't download YouTube audio, so download the audio and Chinese subtitles locally, then load both files:
 
 ```bash
 yt-dlp -x --audio-format m4a --write-subs --write-auto-subs --sub-langs zh-Hans --convert-subs srt URL
@@ -69,6 +77,7 @@ the expected tones (catching wrong polyphone readings and missing neutral tones)
 | Per-syllable height/shape scoring, notes | `src/analysis/score.ts` |
 | Template tone recognition (hint only) | `src/analysis/tones.ts` |
 | Whole-line DTW comparison for shadowing | `src/analysis/shadow.ts` |
+| Ear training: adaptive item choice, clip splitting and timing | `src/ear/` |
 | Lexical/surface tones, sandhi | `src/g2p/tones.ts` |
 
 Creaky voice — common at the bottom of T3 and T4 — has no measurable pitch, so

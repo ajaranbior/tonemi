@@ -10,12 +10,22 @@ export interface ItemStats {
   last: number
 }
 
+/** Ear-training accuracy: `ema` is a moving average of all-syllables-right (0..1). */
+export interface EarStat {
+  n: number
+  ema: number
+}
+
 interface Stored {
   range?: SpeakerRange
   /** False when the range is a preset rather than measured. */
   calibrated?: boolean
   progress: Record<string, ItemStats>
   prefs: Record<string, boolean | string>
+  /** Per tone-combo accuracy, e.g. "23", "214". */
+  earCombos?: Record<string, EarStat>
+  /** "expected>chosen" → count, e.g. "3>2". */
+  earConfusions?: Record<string, number>
 }
 
 function load(): Stored {
@@ -72,5 +82,21 @@ export function getPref<T extends boolean | string>(key: string, fallback: T): T
 }
 export function setPref(key: string, value: boolean | string) {
   state.prefs[key] = value
+  save()
+}
+
+export const getEarCombos = () => state.earCombos ?? {}
+export const getEarConfusions = () => state.earConfusions ?? {}
+export function setEarCombo(combo: string, stat: EarStat) {
+  state.earCombos = { ...state.earCombos, [combo]: stat }
+  save()
+}
+export function addEarConfusion(key: string) {
+  state.earConfusions = { ...state.earConfusions, [key]: (state.earConfusions?.[key] ?? 0) + 1 }
+  save()
+}
+export function resetEar() {
+  state.earCombos = {}
+  state.earConfusions = {}
   save()
 }

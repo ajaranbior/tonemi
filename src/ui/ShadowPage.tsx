@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { chaoTrack, rangeFromSemitones, type SpeakerRange } from '../analysis/normalize'
 import { hzToSt, trackPitch, type PitchTrack } from '../analysis/pitch'
+import { trackInWorker } from '../analysis/trackInWorker'
 import { compareLine, voicedSeq, type ShadowResult } from '../analysis/shadow'
 import { audioContext } from '../audio/context'
 import { playUrl, stopPlayback, wavUrl } from '../audio/playback'
@@ -304,24 +305,4 @@ function CueText({ text, showPinyin }: { text: string; showPinyin: boolean }) {
       {showPinyin && approximate && <p className="muted small">3-3-3 sandhi shown approximately.</p>}
     </div>
   )
-}
-
-function trackInWorker(samples: Float32Array): Promise<PitchTrack> {
-  return new Promise((resolve, reject) => {
-    const w = new Worker(new URL('../analysis/pitch.worker.ts', import.meta.url), { type: 'module' })
-    w.onmessage = (e: MessageEvent<PitchTrack>) => {
-      resolve(e.data)
-      w.terminate()
-    }
-    w.onerror = (e) => {
-      w.terminate()
-      // Fall back to the main thread.
-      try {
-        resolve(trackPitch(samples))
-      } catch {
-        reject(e)
-      }
-    }
-    w.postMessage(samples)
-  })
 }

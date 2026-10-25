@@ -4,14 +4,16 @@ import { DEFAULT_RANGES, getRange, isCalibrated, setRange } from './store'
 import { AboutPage } from './ui/AboutPage'
 import { CalibratePage } from './ui/CalibratePage'
 import { DrillPage } from './ui/DrillPage'
+import { EarPage } from './ui/EarPage'
 
 // Shadowing pulls in the pinyin dictionary; load it only when opened.
 const ShadowPage = lazy(() => import('./ui/ShadowPage'))
 
-type Tab = 'drill' | 'shadow' | 'calibrate' | 'about'
+type Tab = 'drill' | 'ear' | 'shadow' | 'calibrate' | 'about'
 
 const TABS: [Tab, string, string][] = [
   ['drill', '🎯', 'Drills'],
+  ['ear', '👂', 'Ear'],
   ['shadow', '🎬', 'Shadow'],
   ['calibrate', '🎚️', 'Range'],
   ['about', 'ℹ️', 'About'],
@@ -38,6 +40,7 @@ export default function App() {
       </header>
       <main>
         {tab === 'drill' && <DrillPage range={range} calibrated={calibrated} onCalibrate={() => setTab('calibrate')} />}
+        {tab === 'ear' && <EarPage />}
         {tab === 'shadow' && (
           <Suspense fallback={<div className="card">Loading…</div>}>
             <ShadowPage range={range} />

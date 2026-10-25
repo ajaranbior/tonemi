@@ -17,8 +17,9 @@ import { Toggle } from './Toggle'
 import { PitchPlot, type PlotLine } from './PitchPlot'
 import { answerOverlay } from './earPlot'
 import { AnswerPreview } from './AnswerPreview'
-import { ToneAnswer, Verdict } from './ToneAnswer'
+import { ResultBanner, ToneAnswer, Verdict } from './ToneAnswer'
 import { useReview } from './useReview'
+import { FEEDBACK_SECONDS, playFeedback } from '../audio/sfx'
 
 interface Clip {
   id: string
@@ -60,6 +61,7 @@ export default function EarClips({ onAnswered }: Props) {
   const [answered, setAnswered] = useState(false)
   const [playing, setPlaying] = useState(false)
   const [cursor, setCursor] = useState<number | undefined>()
+  const [sound, setSound] = useState(() => getPref<boolean>('ear.sound', true))
   const [autoReveal, setAutoReveal] = useState(() => getPref<boolean>('ear.auto', true))
   const review = useReview<Clip>()
   const mediaEl = useRef<HTMLVideoElement & HTMLAudioElement>(null)
@@ -232,8 +234,9 @@ export default function EarClips({ onAnswered }: Props) {
     retry.current = g.all ? clearRetry(retry.current, clip.id) : scheduleRetry(retry.current, clip.id, trial.current)
     setAnswered(true)
     onAnswered(g.all)
-    if (!g.all) void play(clip)
-  }, [clip, answered, chosen, onAnswered, play])
+    if (sound) playFeedback(g.all)
+    if (!g.all) setTimeout(() => void play(clip), sound ? FEEDBACK_SECONDS * 1000 : 0)
+  }, [clip, answered, chosen, onAnswered, play, sound])
 
   const pick = useCallback(
     (index: number, tone: Tone) => {
@@ -333,7 +336,8 @@ export default function EarClips({ onAnswered }: Props) {
             ))}
           </div>
 
-          <section className="card">
+          <section className={`card ${g ? (g.all ? 'flash-ok' : 'flash-bad') : ''}`}>
+            {g && <ResultBanner key={sClip.id + sChosen.join('')} grade={g} />}
             <div className="item-head">
               <div>
                 {sAnswered ? (
@@ -349,7 +353,6 @@ export default function EarClips({ onAnswered }: Props) {
                   <div className="hanzi muted" aria-label="Clip text hidden">？</div>
                 )}
               </div>
-              {g && <div className={`big-score ${g.all ? 'score-good' : 'score-bad'}`}>{g.all ? '✓' : '✗'}</div>}
             </div>
 
             {sAnswered && g && <ClipChart clip={sClip} chosen={sChosen} ready={ready} span={span(sClip)} cursor={cursor} />}
@@ -385,6 +388,7 @@ export default function EarClips({ onAnswered }: Props) {
 
           <details className="card settings">
             <summary>Video settings</summary>
+            <Toggle label="Sound effects and vibration for right/wrong" value={sound} onChange={(v) => { setSound(v); setPref('ear.sound', v) }} />
             <Toggle label="Reveal the answer as soon as all tones are chosen" value={autoReveal} onChange={(v) => { setAutoReveal(v); setPref('ear.auto', v) }} />
             {media?.video && <Toggle label="Show video (may reveal burned-in subtitles)" value={showVideo} onChange={(v) => { setShowVideo(v); setPref('ear.video', v) }} />}
             <p className="muted small">Pitch range is estimated from the speech in the subtitled lines; background music or several speakers make the chart less accurate.</p>

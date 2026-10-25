@@ -11,8 +11,9 @@ import { PitchPlot, type PlotLine } from './PitchPlot'
 import { answerOverlay } from './earPlot'
 import { marked } from './tone'
 import { AnswerPreview } from './AnswerPreview'
-import { ToneAnswer, Verdict } from './ToneAnswer'
+import { ResultBanner, ToneAnswer, Verdict } from './ToneAnswer'
 import { useReview } from './useReview'
+import { FEEDBACK_SECONDS, playFeedback } from '../audio/sfx'
 
 type Kind = ItemKind | 'mix'
 const KINDS: [Kind, string][] = [['single', '1 syllable'], ['pair', '2'], ['triple', '3'], ['mix', 'Mix']]
@@ -34,6 +35,7 @@ export function EarBank({ onAnswered }: Props) {
   const [answered, setAnswered] = useState(false)
   const [playing, setPlaying] = useState(false)
   const [cursor, setCursor] = useState<number | undefined>()
+  const [sound, setSound] = useState(() => getPref<boolean>('ear.sound', true))
   const [autoReveal, setAutoReveal] = useState(() => getPref<boolean>('ear.auto', true))
   const review = useReview<BankItem>()
   const playToken = useRef(0)
@@ -117,8 +119,9 @@ export function EarBank({ onAnswered }: Props) {
     retry.current = g.all ? clearRetry(retry.current, item.id) : scheduleRetry(retry.current, item.id, trial.current)
     setAnswered(true)
     onAnswered(g.all)
-    if (!g.all) void listen()
-  }, [item, answered, chosen, onAnswered, listen])
+    if (sound) playFeedback(g.all)
+    if (!g.all) setTimeout(() => void listen(), sound ? FEEDBACK_SECONDS * 1000 : 0)
+  }, [item, answered, chosen, onAnswered, listen, sound])
 
   const pick = useCallback(
     (index: number, tone: Tone) => {
@@ -193,8 +196,9 @@ export function EarBank({ onAnswered }: Props) {
         ))}
       </div>
 
-      <section className="card">
+      <section className={`card ${g ? (g.all ? 'flash-ok' : 'flash-bad') : ''}`}>
         {rv && <div className="banner">Reviewing an earlier word ({(review.index ?? 0) + 1} of {review.count})</div>}
+        {g && <ResultBanner key={shown.id + shownChosen.join('')} grade={g} />}
         <div className="item-head">
           <div>
             {shownAnswered || showHanzi ? (
@@ -212,7 +216,6 @@ export function EarBank({ onAnswered }: Props) {
               <div className="hanzi muted" aria-label="Word hidden">？</div>
             )}
           </div>
-          {g && <div className={`big-score ${g.all ? 'score-good' : 'score-bad'}`}>{g.all ? '✓' : '✗'}</div>}
         </div>
 
         {shownAnswered && g && <ReferenceChart item={shown} range={refRange} chosen={shownChosen} pinyin={pinyin} wrong={!g.all} cursor={cursor} />}
@@ -244,6 +247,7 @@ export function EarBank({ onAnswered }: Props) {
 
       <details className="card settings">
         <summary>Ear settings</summary>
+        <Toggle label="Sound effects and vibration for right/wrong" value={sound} onChange={(v) => { setSound(v); setPref('ear.sound', v) }} />
         <Toggle label="Reveal the answer as soon as all tones are chosen" value={autoReveal} onChange={(v) => { setAutoReveal(v); setPref('ear.auto', v) }} />
         <Toggle label="Show the character before answering" value={showHanzi} onChange={(v) => { setShowHanzi(v); setPref('ear.hanzi', v) }} />
       </details>

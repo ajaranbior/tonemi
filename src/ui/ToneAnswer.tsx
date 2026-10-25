@@ -1,4 +1,5 @@
 import type { Tone } from '../analysis/tones'
+import type { Grade } from '../ear/adapt'
 import { toneName } from './tone'
 
 const OPTIONS: [Tone, string][] = [
@@ -85,5 +86,17 @@ export function Verdict({ syllables, expected, lexical, chosen }: VerdictProps) 
         )
       })}
     </ul>
+  )
+}
+
+/** Big coloured result strip; the pop/shake animation restarts whenever it mounts. */
+export function ResultBanner({ grade }: { grade: Grade }) {
+  const right = grade.correct.filter(Boolean).length
+  const n = grade.correct.length
+  return (
+    <div className={`result ${grade.all ? 'ok' : 'bad'}`} role="status">
+      <span>{grade.all ? '✓ Correct' : '✗ Not quite'}</span>
+      {n > 1 && <small>{right} of {n} right</small>}
+    </div>
   )
 }

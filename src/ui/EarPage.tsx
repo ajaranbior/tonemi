@@ -1,5 +1,6 @@
-import { lazy, Suspense, useCallback, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { topConfusions } from '../ear/adapt'
+import { navigate, useRoute } from '../route'
 import { getEarCombos, getEarConfusions, getPref, resetEar, setPref } from '../store'
 import { EarBank } from './EarBank'
 import { toneName } from './tone'
@@ -10,7 +11,13 @@ const EarClips = lazy(() => import('./EarClips'))
 type Mode = 'words' | 'video'
 
 export function EarPage() {
-  const [mode, setMode] = useState<Mode>(() => getPref('ear.mode', 'words') as Mode)
+  const route = useRoute()
+  // #/ear/video or #/ear/words; a bare #/ear restores the last used mode.
+  const mode: Mode = route[1] === 'video' || route[1] === 'words' ? route[1] : (getPref('ear.mode', 'words') as Mode)
+  // Make the mode explicit in the URL so history entries (Back) are unambiguous.
+  useEffect(() => {
+    if (route[1] !== mode) history.replaceState(null, '', `#/ear/${mode}`)
+  }, [route, mode])
   const [session, setSession] = useState({ n: 0, ok: 0 })
   const [tick, setTick] = useState(0)
 
@@ -20,8 +27,8 @@ export function EarPage() {
   }, [])
 
   const choose = (m: Mode) => {
-    setMode(m)
     setPref('ear.mode', m)
+    navigate('ear', m)
   }
 
   return (

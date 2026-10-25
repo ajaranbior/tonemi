@@ -1,4 +1,5 @@
 import { lazy, Suspense, useState } from 'react'
+import { navigate, useRoute } from './route'
 import type { SpeakerRange } from './analysis/normalize'
 import { DEFAULT_RANGES, getRange, isCalibrated, setRange } from './store'
 import { AboutPage } from './ui/AboutPage'
@@ -22,7 +23,9 @@ const TABS: [Tab, string, string][] = [
 export default function App() {
   const [range, setRangeState] = useState<SpeakerRange>(() => getRange() ?? DEFAULT_RANGES.low)
   const [calibrated, setCalibrated] = useState(isCalibrated)
-  const [tab, setTab] = useState<Tab>(() => (getRange() ? 'drill' : 'calibrate'))
+  const route = useRoute()
+  const tab: Tab = TABS.some(([id]) => id === route[0]) ? (route[0] as Tab) : getRange() ? 'drill' : 'calibrate'
+  const setTab = (t: Tab) => navigate(t)
 
   const save = (r: SpeakerRange, measured: boolean) => {
     setRange(r, measured)

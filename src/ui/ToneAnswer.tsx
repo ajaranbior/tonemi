@@ -24,7 +24,13 @@ export function ToneAnswer({ chosen, expected, onPick }: Props) {
     <div className="tone-rows">
       {chosen.map((pick, i) => (
         <div className="tone-row" key={i}>
-          <span className="muted small">{chosen.length > 1 ? ORDINAL[i] : ''}</span>
+          {expected ? (
+            <span className={`row-mark ${pick === expected[i] ? 'ok' : 'bad'}`} aria-label={pick === expected[i] ? 'correct' : 'wrong'}>
+              {pick === expected[i] ? '✓' : '✗'}
+            </span>
+          ) : (
+            <span className="muted small">{chosen.length > 1 ? ORDINAL[i] : ''}</span>
+          )}
           {OPTIONS.map(([tone, mark]) => {
             const state = expected
               ? tone === expected[i]
@@ -70,9 +76,9 @@ export function Verdict({ syllables, expected, lexical, chosen }: VerdictProps) 
         const ok = chosen[i] === expected[i]
         const sandhi = lexical && lexical[i] !== expected[i]
         return (
-          <li key={i}>
+          <li key={i} className={`verdict-row ${ok ? 'ok' : 'bad'}`}>
+            <span className="verdict-mark" aria-label={ok ? 'correct' : 'wrong'}>{ok ? '✓' : '✗'}</span>
             <span className={`syl t${expected[i]}`}>{s}</span>
-            <span className={`pill ${ok ? 'score-good' : 'score-bad'}`}>{ok ? '✓' : '✗'}</span>
             <span className={ok ? 'muted small' : 'bad small'}>
               {ok ? toneName(expected[i]) : `you said ${toneName(chosen[i] ?? 0)} · it is ${toneName(expected[i])}`}
             </span>

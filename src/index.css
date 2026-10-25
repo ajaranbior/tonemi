@@ -211,3 +211,11 @@ button.link { min-height: 0; padding: 0; border: 0; background: none; color: var
 @keyframes flash-ok { from { box-shadow: 0 0 0 4px var(--good); } to { box-shadow: 0 0 0 0 transparent; } }
 @keyframes flash-bad { from { box-shadow: 0 0 0 4px var(--bad); } to { box-shadow: 0 0 0 0 transparent; } }
 @media (prefers-reduced-motion: reduce) { .result, .result.bad, .card.flash-ok, .card.flash-bad { animation: none; } }
+
+.row-mark { font-size: 1.4rem; font-weight: 800; text-align: center; }
+.row-mark.ok, .verdict-row.ok .verdict-mark { color: var(--good); }
+.row-mark.bad, .verdict-row.bad .verdict-mark { color: var(--bad); }
+.verdict-row { padding: 8px 10px; border-radius: 10px; }
+.verdict-row.ok { background: color-mix(in srgb, var(--good) 14%, var(--card)); }
+.verdict-row.bad { background: color-mix(in srgb, var(--bad) 16%, var(--card)); }
+.verdict-mark { font-size: 1.4rem; font-weight: 800; min-width: 1.4em; text-align: center; }

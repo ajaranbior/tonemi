@@ -259,8 +259,8 @@ function ReferenceChart({ item, range, chosen, pinyin, wrong, cursor }: { item: 
   const { hop } = item.ref
   const chao = useMemo(() => refChao(item, range), [item, range])
   const { labels, guess, boundaries } = useMemo(
-    () => answerOverlay(item.ref.segments, item.surface, chosen, pinyin, hop, 0),
-    [item, chosen, pinyin, hop],
+    () => answerOverlay(item.ref.segments, item.surface, chosen, pinyin, hop, 0, chao),
+    [item, chosen, pinyin, hop, chao],
   )
   const lines: PlotLine[] = [{ t: Array.from(chao, (_, i) => i * hop), v: chao, kind: 'ref' }]
   if (guess) lines.push(guess)

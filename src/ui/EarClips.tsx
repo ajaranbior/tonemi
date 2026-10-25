@@ -428,7 +428,7 @@ function ClipChart({ clip, chosen, ready, span, cursor }: { clip: Clip; chosen: 
 
   if (!view) return <p className="muted small">Not enough voiced speech in this clip to draw a chart.</p>
   const { from, to, segments } = view
-  const { labels, guess, boundaries } = answerOverlay(segments, clip.tones, chosen, clip.pinyin, hop, from)
+  const { labels, guess, boundaries } = answerOverlay(segments, clip.tones, chosen, clip.pinyin, hop, from, chao)
   const lines: PlotLine[] = [
     { t: Array.from({ length: to - from }, (_, i) => i * hop), v: chao.subarray(from, to), kind: 'ref' },
   ]

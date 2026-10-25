@@ -15,6 +15,8 @@ export interface PlotLabel {
   /** Second line under the main label (e.g. recognised tone). */
   sub?: string
   ok?: boolean
+  /** Time range [start, end] of the syllable; shaded green/red when `ok` is set. */
+  span?: [number, number]
 }
 
 interface Props {
@@ -68,7 +70,7 @@ function paint(
   g.clearRect(0, 0, w, h)
 
   const left = 22
-  const top = labels.length ? 34 : 6
+  const top = labels.length ? 40 : 6
   const bottom = 6
   const plotH = h - top - bottom
   const x = (t: number) => left + (t / Math.max(duration, 0.1)) * (w - left - 6)
@@ -83,6 +85,15 @@ function paint(
     g.fillRect(left, y(level + 0.5), w - left, y(level - 0.5) - y(level + 0.5))
     g.fillStyle = css('--muted')
     g.fillText(String(level), left / 2, y(level))
+  }
+
+  // Right/wrong shading behind each answered syllable.
+  for (const l of labels) {
+    if (l.ok === undefined || !l.span) continue
+    g.globalAlpha = 0.16
+    g.fillStyle = l.ok ? css('--good') : css('--bad')
+    g.fillRect(x(l.span[0]), top, x(l.span[1]) - x(l.span[0]), h - top - bottom)
+    g.globalAlpha = 1
   }
 
   g.strokeStyle = css('--grid')
@@ -139,9 +150,14 @@ function paint(
     g.fillStyle = l.tone !== undefined ? css(`--t${l.tone}`) : css('--fg')
     g.fillText(l.text, x(l.t), 15)
     if (l.sub) {
-      g.font = '11px system-ui, sans-serif'
-      g.fillStyle = l.ok === false ? css('--bad') : css('--muted')
-      g.fillText(l.sub, x(l.t), 29)
+      if (l.ok === undefined) {
+        g.font = '11px system-ui, sans-serif'
+        g.fillStyle = css('--muted')
+      } else {
+        g.font = '700 15px system-ui, sans-serif'
+        g.fillStyle = l.ok ? css('--good') : css('--bad')
+      }
+      g.fillText(l.sub, x(l.t), 33)
     }
   }
 }

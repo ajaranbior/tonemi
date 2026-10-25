@@ -15,10 +15,13 @@ export function answerOverlay(
   pinyin: string[],
   hop: number,
   offset: number,
+  /** Per-frame Chao values (NaN when unvoiced); the tone shape is fitted to the voiced stretch of each syllable. */
+  chao?: ArrayLike<number>,
 ): { labels: PlotLabel[]; guess: PlotLine | null; boundaries: number[] } {
   const t: number[] = []
   const v: number[] = []
-  const labels = segments.map((seg, i): PlotLabel => {
+  const labels = segments.map((seg0, i): PlotLabel => {
+    const seg = voicedExtent(seg0, chao)
     const ok = chosen[i] === expected[i]
     const pick = chosen[i]
     if (!ok && pick) {
@@ -38,8 +41,9 @@ export function answerOverlay(
       t: ((seg[0] + seg[1]) / 2 - offset) * hop,
       text: pinyin[i],
       tone: expected[i],
-      sub: ok ? '✓' : `you: ${toneName(pick ?? 0)}`,
+      sub: ok ? '✓' : `✗ you: ${toneName(pick ?? 0)}`,
       ok,
+      span: [(seg0[0] - offset) * hop, (seg0[1] - offset) * hop],
     }
   })
   return {
@@ -47,4 +51,14 @@ export function answerOverlay(
     guess: t.length ? { t, v, kind: 'user' } : null,
     boundaries: segments.slice(1).map((s) => (s[0] - offset) * hop),
   }
+}
+
+/** The first..last voiced frames of a segment (the whole segment when there is no pitch). */
+function voicedExtent(seg: Segment, chao?: ArrayLike<number>): Segment {
+  if (!chao) return seg
+  let a = seg[0]
+  let b = seg[1]
+  while (a < b && Number.isNaN(chao[a])) a++
+  while (b > a && Number.isNaN(chao[b - 1])) b--
+  return b - a >= 3 ? [a, b] : seg
 }

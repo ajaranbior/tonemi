@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { GLYPH_POINTS } from './toneShapes'
 
 export interface PlotLine {
   t: ArrayLike<number>
@@ -15,6 +16,8 @@ export interface PlotLabel {
   /** Second line under the main label (e.g. recognised tone). */
   sub?: string
   ok?: boolean
+  /** Draws this tone's icon after the second line (e.g. what the learner picked). */
+  subTone?: number
   /** Time range [start, end] of the syllable; shaded green/red when `ok` is set. */
   span?: [number, number]
 }
@@ -157,7 +160,37 @@ function paint(
         g.font = '700 15px system-ui, sans-serif'
         g.fillStyle = l.ok ? css('--good') : css('--bad')
       }
-      g.fillText(l.sub, x(l.t), 33)
+      if (l.subTone === undefined) g.fillText(l.sub, x(l.t), 33)
+      else {
+        // text + icon, centred together
+        const gw = 24
+        const tw = g.measureText(l.sub).width
+        const x0 = x(l.t) - (tw + 6 + gw) / 2
+        g.textAlign = 'left'
+        g.fillText(l.sub, x0, 33)
+        g.textAlign = 'center'
+        drawGlyph(g, l.subTone, x0 + tw + 6, 33 - 14, l.ok === false ? css('--bad') : css('--fg'))
+      }
     }
   }
+}
+
+/** Tone icon in a 24×16 box at (x, y). */
+function drawGlyph(g: CanvasRenderingContext2D, tone: number, x: number, y: number, color: string) {
+  g.save()
+  g.strokeStyle = color
+  g.fillStyle = color
+  g.lineWidth = 2.6
+  g.lineCap = 'round'
+  g.lineJoin = 'round'
+  if (tone === 0) {
+    g.beginPath()
+    g.arc(x + 12, y + 12, 2.4, 0, Math.PI * 2)
+    g.fill()
+  } else {
+    g.beginPath()
+    GLYPH_POINTS[tone as 1 | 2 | 3 | 4].forEach(([px, py], i) => (i ? g.lineTo(x + px, y + py) : g.moveTo(x + px, y + py)))
+    g.stroke()
+  }
+  g.restore()
 }

@@ -1,13 +1,6 @@
 import type { Tone } from '../analysis/tones'
 import { toneLong } from './tone'
-
-const SHAPES: Record<Tone, string> = {
-  1: '3,3 21,3',
-  2: '3,12 21,3',
-  3: '3,4 10,13 21,3',
-  4: '3,3 21,14',
-  0: '',
-}
+import { GLYPH_POINTS } from './toneShapes'
 
 /** The tone's pitch shape as a small icon: ¯ ˊ ˇ ˋ, and a dot for the neutral tone. */
 export function ToneGlyph({ tone }: { tone: Tone }) {
@@ -16,7 +9,7 @@ export function ToneGlyph({ tone }: { tone: Tone }) {
       {tone === 0 ? (
         <circle cx="12" cy="12" r="2.4" fill="currentColor" />
       ) : (
-        <polyline points={SHAPES[tone]} fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+        <polyline points={GLYPH_POINTS[tone].map((q) => q.join(',')).join(' ')} fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
       )}
     </svg>
   )

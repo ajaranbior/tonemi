@@ -43,6 +43,7 @@ export function answerOverlay(
       tone: expected[i],
       sub: ok ? '✓' : `✗ you: ${toneName(pick ?? 0)}`,
       ok,
+      subTone: !ok && pick !== null ? pick : undefined,
       span: [(seg0[0] - offset) * hop, (seg0[1] - offset) * hop],
     }
   })

@@ -16,7 +16,9 @@ import { parseSubtitles, type Cue } from '../subtitles'
 import { Toggle } from './Toggle'
 import { PitchPlot, type PlotLine } from './PitchPlot'
 import { answerOverlay } from './earPlot'
+import { AnswerPreview } from './AnswerPreview'
 import { ToneAnswer, Verdict } from './ToneAnswer'
+import { useReview } from './useReview'
 
 interface Clip {
   id: string
@@ -56,7 +58,10 @@ export default function EarClips({ onAnswered }: Props) {
   const [answered, setAnswered] = useState(false)
   const [playing, setPlaying] = useState(false)
   const [cursor, setCursor] = useState<number | undefined>()
+  const [autoReveal, setAutoReveal] = useState(() => getPref<boolean>('ear.auto', true))
+  const review = useReview<Clip>()
   const mediaEl = useRef<HTMLVideoElement & HTMLAudioElement>(null)
+  const playToken = useRef(0)
   const trial = useRef(0)
   const retry = useRef<Retry[]>([])
   const autoplay = useRef(false)
@@ -162,12 +167,14 @@ export default function EarClips({ onAnswered }: Props) {
         pick = pickByCombo(pool, (c) => c.key, getEarCombos())
       }
       if (!pick) return
+      if (clip && answered) review.record({ item: clip, chosen })
+      review.leave()
       autoplay.current = play
       setClip(pick)
       setChosen(pick.tones.map(() => null))
       setAnswered(false)
     },
-    [clips],
+    [clips, clip, chosen, answered, review.record, review.leave],
   )
 
   useEffect(() => {
@@ -193,13 +200,14 @@ export default function EarClips({ onAnswered }: Props) {
       if (!c || !el) return
       const s = whole ? ([cues[c.cue].start, cues[c.cue].end] as [number, number]) : span(c)
       if (!s) return
+      const mine = ++playToken.current
       setPlaying(true)
       try {
         await playSpan(el, s[0], s[1], rate, (t) => setCursor(Number.isNaN(t) ? undefined : t))
       } catch (e) {
         setError(String(e))
       }
-      setPlaying(false)
+      if (mine === playToken.current) setPlaying(false)
     },
     [cues, span],
   )
@@ -212,43 +220,72 @@ export default function EarClips({ onAnswered }: Props) {
   }, [clip, play])
   useEffect(() => () => stopSpan(mediaEl.current), [])
 
-  const pick = useCallback(
-    (i: number, tone: Tone) => {
-      if (!answered) setChosen((c) => c.map((x, k) => (k === i ? tone : x)))
-    },
-    [answered],
-  )
-
-  const check = useCallback(() => {
-    if (!clip || answered || chosen.some((c) => c === null)) return
-    const g = grade(clip.tones, chosen)
+  const check = useCallback((answers: (Tone | null)[] = chosen) => {
+    if (!clip || answered || answers.some((c) => c === null)) return
+    const g = grade(clip.tones, answers)
     setEarCombo(clip.key, updateStat(getEarCombos()[clip.key], g.all))
-    clip.tones.forEach((t, i) => !g.correct[i] && addEarConfusion(`${t}>${chosen[i]}`))
+    clip.tones.forEach((t, i) => !g.correct[i] && addEarConfusion(`${t}>${answers[i]}`))
     trial.current++
     retry.current = g.all ? clearRetry(retry.current, clip.id) : scheduleRetry(retry.current, clip.id, trial.current)
     setAnswered(true)
     onAnswered(g.all)
-  }, [clip, answered, chosen, onAnswered])
+    if (!g.all) void play(clip)
+  }, [clip, answered, chosen, onAnswered, play])
 
+  const pick = useCallback(
+    (index: number, tone: Tone) => {
+      if (answered) return
+      const next = chosen.map((x, i) => (i === index ? tone : x))
+      setChosen(next)
+      if (autoReveal && next.every((c) => c !== null)) check(next)
+    },
+    [answered, chosen, autoReveal, check],
+  )
+
+  const rv = review.reviewing
+  const sClip = rv ? rv.item : clip
+  const sChosen = rv ? rv.chosen : chosen
+  const sAnswered = rv ? true : answered
+  const advance = useCallback(() => {
+    if (rv) review.forward()
+    else next(clip)
+  }, [rv, review, next, clip])
+
+  // Keys: digits fill the next empty syllable, Enter checks/continues, Space or R replays,
+  // ← goes back to the previous clip, → forward / next.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || !clip) return
       if (e.key === 'Enter') {
         e.preventDefault()
-        if (answered) next(clip)
-        else check()
-      } else if (e.key === 'r' || e.key === 'R') void play(clip)
-      else if (!answered && /^[0-4]$/.test(e.key)) {
+        if (sAnswered) advance()
+        else if (!autoReveal) check()
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault()
+        review.back()
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault()
+        if (sAnswered) advance()
+      } else if (e.key === ' ' || e.key === 'r' || e.key === 'R') {
+        e.preventDefault()
+        if (!e.repeat) void play(sClip)
+      } else if (!sAnswered && /^[0-4]$/.test(e.key)) {
         const i = chosen.findIndex((c) => c === null)
         if (i >= 0 && !(i === 0 && e.key === '0')) pick(i, Number(e.key) as Tone)
       }
     }
+    // A focused button would otherwise "click" on Space release.
+    const onUp = (e: KeyboardEvent) => e.key === ' ' && e.preventDefault()
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [clip, answered, chosen, next, check, play, pick])
+    window.addEventListener('keyup', onUp)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('keyup', onUp)
+    }
+  }, [clip, sClip, sAnswered, chosen, advance, check, play, pick, review, autoReveal])
 
   const complete = chosen.length > 0 && chosen.every((c) => c !== null)
-  const g = clip && answered ? grade(clip.tones, chosen) : null
+  const g = sClip && sAnswered ? grade(sClip.tones, sChosen) : null
 
   return (
     <>
@@ -277,7 +314,7 @@ export default function EarClips({ onAnswered }: Props) {
 
       {media && cues.length > 0 && !ready && !status && !error && <div className="card">Waiting for pitch analysis…</div>}
 
-      {ready && clip && (
+      {ready && sClip && (
         <>
           <div className="segmented" role="tablist" aria-label="Clip size">
             {SIZES.map(([n, label]) => (
@@ -296,12 +333,12 @@ export default function EarClips({ onAnswered }: Props) {
           <section className="card">
             <div className="item-head">
               <div>
-                {answered ? (
+                {sAnswered ? (
                   <>
-                    <div className="hanzi">{clip.hanzi}</div>
+                    <div className="hanzi">{sClip.hanzi}</div>
                     <div className="pinyin">
-                      {clip.pinyin.map((s, i) => (
-                        <span key={i} className={`t${clip.tones[i]}`}>{s} </span>
+                      {sClip.pinyin.map((s, i) => (
+                        <span key={i} className={`t${sClip.tones[i]}`}>{s} </span>
                       ))}
                     </div>
                   </>
@@ -312,34 +349,40 @@ export default function EarClips({ onAnswered }: Props) {
               {g && <div className={`big-score ${g.all ? 'score-good' : 'score-bad'}`}>{g.all ? '✓' : '✗'}</div>}
             </div>
 
+            {sAnswered && g && <ClipChart clip={sClip} chosen={sChosen} ready={ready} span={span(sClip)} cursor={cursor} />}
+            {g && !g.all && <p className="muted small">Grey is what was said; blue is the tone you picked. Space replays it; the line follows the audio.</p>}
+
             <div className="controls ear-controls">
-              <button className="primary" onClick={() => play(clip)} disabled={playing}>▶ Clip</button>
-              <button onClick={() => play(clip, 0.6)} disabled={playing}>🐢 Slow</button>
-              <button onClick={() => play(clip, 1, true)} disabled={playing}>▶ Line</button>
+              <button className="primary" onClick={() => play(sClip)} disabled={playing}>▶ Clip</button>
+              <button onClick={() => play(sClip, 0.6)} disabled={playing}>🐢 Slow</button>
+              <button onClick={() => play(sClip, 1, true)} disabled={playing}>▶ Line</button>
             </div>
 
-            <h3 className="ear-q">{answered ? 'Answer' : `Tones of the ${clip.tones.length} syllable${clip.tones.length > 1 ? 's' : ''}?`}</h3>
-            <ToneAnswer chosen={chosen} expected={answered ? clip.tones : undefined} onPick={pick} />
-            {!answered ? (
-              <button className="primary wide" onClick={check} disabled={!complete}>Check</button>
-            ) : (
-              <button className="primary wide" onClick={() => next(clip)}>Next →</button>
-            )}
-            <button className="link small" onClick={() => next(clip)}>Skip (clip cut badly / audio unclear)</button>
+            <h3 className="ear-q">{sAnswered ? 'Answer' : `Tones of the ${sClip.tones.length} syllable${sClip.tones.length > 1 ? 's' : ''}?`}</h3>
+            <ToneAnswer chosen={sChosen} expected={sAnswered ? sClip.tones : undefined} onPick={pick} />
+            <div className="nav-row">
+              <button onClick={review.back} disabled={!review.canBack}>← Back</button>
+              {!sAnswered && !autoReveal ? (
+                <button className="primary" onClick={() => check()} disabled={!complete}>Check</button>
+              ) : (
+                <button className="primary" onClick={advance} disabled={!sAnswered}>Next →</button>
+              )}
+            </div>
+            {!sAnswered && <button className="link small" onClick={() => next(clip)}>Skip (clip cut badly / audio unclear)</button>}
           </section>
 
-          {answered && g && (
+          {sAnswered && g && (
             <section className="card">
-              <Verdict syllables={clip.pinyin} expected={clip.tones} lexical={clip.lexical} chosen={chosen} />
-              <p className="muted small">Line: {cues[clip.cue].text}</p>
-              <ClipChart clip={clip} chosen={chosen} ready={ready} span={span(clip)} cursor={cursor} />
-              {!g.all && <p className="muted small">Compare the grey line with the blue one: that is the difference your ear missed.</p>}
+              <Verdict syllables={sClip.pinyin} expected={sClip.tones} lexical={sClip.lexical} chosen={sChosen} />
+              {!g.all && <AnswerPreview key={sClip.id + sChosen.join('')} chosen={sChosen as Tone[]} />}
+              <p className="muted small">Line: {cues[sClip.cue].text}</p>
               <p className="muted small">Answers are generated from the subtitle text, so rare readings can be wrong, and clip edges are estimated.</p>
             </section>
           )}
 
           <details className="card settings">
             <summary>Video settings</summary>
+            <Toggle label="Reveal the answer as soon as all tones are chosen" value={autoReveal} onChange={(v) => { setAutoReveal(v); setPref('ear.auto', v) }} />
             {media?.video && <Toggle label="Show video (may reveal burned-in subtitles)" value={showVideo} onChange={(v) => { setShowVideo(v); setPref('ear.video', v) }} />}
             <p className="muted small">Pitch range is estimated from the speech in the subtitled lines; background music or several speakers make the chart less accurate.</p>
           </details>

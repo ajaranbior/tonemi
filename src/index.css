@@ -194,3 +194,7 @@ button.link { min-height: 0; padding: 0; border: 0; background: none; color: var
 .wide { width: 100%; margin-top: 12px; }
 .text-input { width: 100%; min-height: 40px; padding: 6px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--card); margin: 6px 0; }
 .cmd { display: block; padding: 8px; margin-bottom: 8px; border-radius: 8px; background: var(--band-a); }
+
+.nav-row { display: grid; grid-template-columns: 1fr 2fr; gap: 8px; margin-top: 12px; }
+
+.preview { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border); }

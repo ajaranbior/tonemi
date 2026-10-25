@@ -2,18 +2,30 @@ import { SR } from '../analysis/pitch'
 
 let current: HTMLAudioElement | null = null
 
-/** Play a URL; resolves when playback ends. Slow rates keep the pitch. */
-export function playUrl(url: string, rate = 1): Promise<void> {
+/**
+ * Play a URL; resolves when playback ends. Slow rates keep the pitch.
+ * `onTime` gets the playback position (s) every frame, then NaN when finished.
+ */
+export function playUrl(url: string, rate = 1, onTime?: (t: number) => void): Promise<void> {
   stopPlayback()
   const el = new Audio(url)
   el.playbackRate = rate
   el.preservesPitch = true
   current = el
   return new Promise((resolve, reject) => {
-    el.onended = () => resolve()
-    el.onpause = () => resolve()
-    el.onerror = () => reject(new Error(`Could not play ${url}`))
-    el.play().catch(reject)
+    let raf = 0
+    const stop = () => {
+      cancelAnimationFrame(raf)
+      onTime?.(NaN)
+    }
+    const tick = () => {
+      onTime?.(el.currentTime)
+      raf = requestAnimationFrame(tick)
+    }
+    el.onended = () => { stop(); resolve() }
+    el.onpause = () => { stop(); resolve() }
+    el.onerror = () => { stop(); reject(new Error(`Could not play ${url}`)) }
+    el.play().then(() => onTime && (raf = requestAnimationFrame(tick)), (e) => { stop(); reject(e) })
   })
 }
 

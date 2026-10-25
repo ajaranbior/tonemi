@@ -1,6 +1,6 @@
 import type { Tone } from '../analysis/tones'
 import type { Grade } from '../ear/adapt'
-import { ToneChip, ToneGlyph } from './ToneGlyph'
+import { ToneGlyph } from './ToneGlyph'
 
 const OPTIONS: Tone[] = [1, 2, 3, 4, 0]
 const ORDINAL = ['1st', '2nd', '3rd', '4th', '5th', '6th']
@@ -56,40 +56,25 @@ export function ToneAnswer({ chosen, expected, onPick }: Props) {
   )
 }
 
-interface VerdictProps {
+interface SandhiProps {
   syllables: string[]
   expected: Tone[]
   lexical?: Tone[]
-  chosen: (Tone | null)[]
 }
 
-export function Verdict({ syllables, expected, lexical, chosen }: VerdictProps) {
+const toneWord = (t: Tone) => (t === 0 ? 'neutral' : `tone ${t}`)
+
+/** One line per syllable whose pronounced tone differs from its dictionary tone (sandhi, neutral tones). */
+export function SandhiNote({ syllables, expected, lexical }: SandhiProps) {
+  const rows = syllables.flatMap((s, i) => (lexical && lexical[i] !== expected[i] ? [{ s, lex: lexical[i], spoken: expected[i] }] : []))
+  if (!rows.length) return null
   return (
-    <ul className="syllables">
-      {syllables.map((s, i) => {
-        const ok = chosen[i] === expected[i]
-        const sandhi = lexical && lexical[i] !== expected[i]
-        return (
-          <li key={i} className={`verdict-row ${ok ? 'ok' : 'bad'}`}>
-            <span className="verdict-mark" aria-label={ok ? 'correct' : 'wrong'}>{ok ? '✓' : '✗'}</span>
-            <span className={`syl t${expected[i]}`}>{s}</span>
-            {ok ? (
-              <ToneChip tone={expected[i]} />
-            ) : (
-              <div className="compare">
-                <div><small>target</small><ToneChip tone={expected[i]} /></div>
-                <div><small>you</small><ToneChip tone={chosen[i] ?? 0} /></div>
-              </div>
-            )}
-            {sandhi && (
-              <div className="small notes">
-                {chosen[i] === lexical![i] && !ok ? 'Tone sandhi: ' : 'Sandhi: '}
-                written {lexical![i] === 0 ? 'neutral' : `tone ${lexical![i]}`}, pronounced {expected[i] === 0 ? 'neutral' : `tone ${expected[i]}`}.
-              </div>
-            )}
-          </li>
-        )
-      })}
+    <ul className="sandhi">
+      {rows.map((r) => (
+        <li key={r.s} className="small muted">
+          <strong>{r.s}</strong> is written {toneWord(r.lex)} but pronounced {toneWord(r.spoken)} (tone sandhi).
+        </li>
+      ))}
     </ul>
   )
 }

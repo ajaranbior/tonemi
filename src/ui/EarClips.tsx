@@ -19,7 +19,7 @@ import { Toggle } from './Toggle'
 import { PitchPlot, type PlotLine } from './PitchPlot'
 import { answerOverlay } from './earPlot'
 import { AnswerPreview } from './AnswerPreview'
-import { ResultBanner, ToneAnswer, Verdict } from './ToneAnswer'
+import { ResultBanner, SandhiNote, ToneAnswer } from './ToneAnswer'
 import { useReview } from './useReview'
 import { FEEDBACK_SECONDS, playFeedback } from '../audio/sfx'
 
@@ -390,6 +390,7 @@ export default function EarClips({ onAnswered, onOverride }: Props) {
             </div>
 
             {sAnswered && g && <ClipChart clip={sClip} chosen={sChosen} ready={ready} span={span(sClip)} cursor={cursor} />}
+            {sAnswered && <SandhiNote syllables={sClip.pinyin} expected={sClip.tones} lexical={sClip.lexical} />}
             {g && !g.all && <p className="muted small">Grey is what was really said; red is the tone you picked. Space replays it; the line follows the audio.</p>}
 
             <div className="controls ear-controls">
@@ -416,7 +417,6 @@ export default function EarClips({ onAnswered, onOverride }: Props) {
 
           {sAnswered && g && (
             <section className="card">
-              <Verdict syllables={sClip.pinyin} expected={sClip.tones} lexical={sClip.lexical} chosen={sChosen} />
               {!g.all && !(rv ? !!rv.accepted : accepted) && <AnswerPreview key={sClip.id + sChosen.join('')} chosen={sChosen as Tone[]} syllables={sClip.syllables} />}
               <p className="muted small">Line: {cues[sClip.cue].text}</p>
               <p className="muted small">Answers are generated from the subtitle text, so rare readings can be wrong, and clip edges are estimated.</p>
@@ -490,7 +490,7 @@ function ClipChart({ clip, chosen, ready, span, cursor }: { clip: Clip; chosen: 
   const playhead = cursor !== undefined && span ? cursor - from * hop - 0.032 : undefined
   return (
     <>
-      <PitchPlot lines={lines} duration={(to - from) * hop} labels={labels} boundaries={boundaries} cursor={playhead} />
+      <PitchPlot lines={lines} duration={(to - from) * hop} labels={labels} boundaries={boundaries} cursor={playhead} height={chosen.some((c, i) => c !== clip.tones[i]) ? 300 : 230} />
       <div className="legend">
         <span className="key ref" /> speaker
         {guess && (

@@ -1,7 +1,6 @@
 import type { Segment } from '../analysis/segment'
 import { displayShape, type Tone } from '../analysis/tones'
 import type { PlotLabel, PlotLine } from './PitchPlot'
-import { toneName } from './tone'
 
 /**
  * Chart extras for an answered ear trial: a label per syllable (✓ / "you: T2") and, for each
@@ -41,9 +40,9 @@ export function answerOverlay(
       t: ((seg[0] + seg[1]) / 2 - offset) * hop,
       text: pinyin[i],
       tone: expected[i],
-      sub: ok ? '✓' : `✗ you: ${toneName(pick ?? 0)}`,
+      target: expected[i],
+      pick: !ok && pick !== null ? pick : undefined,
       ok,
-      subTone: !ok && pick !== null ? pick : undefined,
       span: [(seg0[0] - offset) * hop, (seg0[1] - offset) * hop],
     }
   })

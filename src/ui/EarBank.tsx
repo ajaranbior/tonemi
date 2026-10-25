@@ -12,7 +12,7 @@ import { PitchPlot, type PlotLine } from './PitchPlot'
 import { answerOverlay } from './earPlot'
 import { marked } from './tone'
 import { AnswerPreview } from './AnswerPreview'
-import { ResultBanner, ToneAnswer, Verdict } from './ToneAnswer'
+import { ResultBanner, SandhiNote, ToneAnswer } from './ToneAnswer'
 import { useReview } from './useReview'
 import { FEEDBACK_SECONDS, playFeedback } from '../audio/sfx'
 
@@ -258,6 +258,7 @@ export function EarBank({ onAnswered, onOverride }: Props) {
         </div>
 
         {shownAnswered && g && <ReferenceChart item={shown} range={refRange} chosen={shownChosen} pinyin={pinyin} wrong={!g.all} cursor={cursor} />}
+        {shownAnswered && <SandhiNote syllables={pinyin} expected={shown.surface} lexical={shown.lexical} />}
 
         <div className="controls ear-controls">
           <button className="primary" onClick={() => listen(1)} disabled={playing}>▶ Listen</button>
@@ -280,10 +281,9 @@ export function EarBank({ onAnswered, onOverride }: Props) {
         )}
       </section>
 
-      {shownAnswered && g && (
+      {shownAnswered && g && !g.all && !(rv ? !!rv.accepted : accepted) && (
         <section className="card">
-          <Verdict syllables={pinyin} expected={shown.surface} lexical={shown.lexical} chosen={shownChosen} />
-          {!g.all && !(rv ? !!rv.accepted : accepted) && <AnswerPreview key={shown.id + shownChosen.join('')} chosen={shownChosen as Tone[]} exclude={shown.id} syllables={shown.syllables} />}
+          <AnswerPreview key={shown.id + shownChosen.join('')} chosen={shownChosen as Tone[]} exclude={shown.id} syllables={shown.syllables} />
         </section>
       )}
 
@@ -319,7 +319,7 @@ function ReferenceChart({ item, range, chosen, pinyin, wrong, cursor }: { item: 
   if (guess) lines.push(guess)
   return (
     <>
-      <PitchPlot lines={lines} duration={chao.length * hop} labels={labels} boundaries={boundaries} cursor={cursor} />
+      <PitchPlot lines={lines} duration={chao.length * hop} labels={labels} boundaries={boundaries} cursor={cursor} height={wrong ? 300 : 230} />
       <div className="legend">
         <span className="key ref" /> the speaker's pitch
         {guess && (

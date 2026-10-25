@@ -17,7 +17,9 @@ export interface PlotLabel {
   /** Second line under the main label (e.g. recognised tone). */
   sub?: string
   ok?: boolean
-  /** Draws this tone's icon after the second line (e.g. what the learner picked). */
+  /** Answer-chart labels: the real tone (icon) and, when wrong, the one the learner picked. */
+  target?: number
+  pick?: number
   subTone?: number
   /** Time range [start, end] of the syllable; shaded green/red when `ok` is set. */
   span?: [number, number]
@@ -74,7 +76,7 @@ function paint(
   g.clearRect(0, 0, w, h)
 
   const left = 22
-  const top = labels.length ? 52 : 6
+  const top = labels.some((l) => l.target !== undefined && l.ok === false) ? 86 : labels.length ? 52 : 6
   const bottom = 6
   const plotH = h - top - bottom
   const x = (t: number) => left + (t / Math.max(duration, 0.1)) * (w - left - 6)
@@ -153,29 +155,45 @@ function paint(
     g.font = '600 18px system-ui, sans-serif'
     g.fillStyle = l.tone !== undefined ? css(`--t${l.tone}`) : css('--fg')
     g.fillText(l.text, x(l.t), 20)
-    if (l.sub) {
-      if (l.ok === undefined) {
-        g.font = '12px system-ui, sans-serif'
-        g.fillStyle = css('--muted')
-      } else {
-        g.font = '700 17px system-ui, sans-serif'
-        g.fillStyle = l.ok ? css('--good') : css('--bad')
-      }
-      if (l.subTone === undefined) g.fillText(l.sub, x(l.t), 43)
+    if (l.target !== undefined) {
+      // Rows of "text + icon" share one icon column so target and pick line up.
+      const rows: { text: string; tone: number; textColor: string; iconColor: string; bold: boolean }[] = []
+      // Narrow columns (3+ syllables on a phone): drop the words and let the icons carry the tones.
+      const room = l.span ? x(l.span[1]) - x(l.span[0]) - 6 : Infinity
+      g.font = '700 15px system-ui, sans-serif'
+      const longest = g.measureText(l.pick !== undefined ? `✗ you ${toneWord(l.pick)}` : `target ${toneWord(l.target)}`).width + 8 + 26
+      const wide = longest <= room
+      const name = (t: number) => (wide ? ` ${toneWord(t)}` : '')
+      if (l.ok) rows.push({ text: '✓', tone: l.target, textColor: css('--good'), iconColor: css(`--t${l.target}`), bold: true })
       else {
-        // text + icon, centred together
-        const scale = 1.2
-        const gw = 24 * scale
-        const tw = g.measureText(l.sub).width
-        const x0 = x(l.t) - (tw + 6 + gw) / 2
-        g.textAlign = 'left'
-        g.fillText(l.sub, x0, 43)
-        g.textAlign = 'center'
-        drawGlyph(g, l.subTone, x0 + tw + 6, 43 - 16, l.ok === false ? css('--bad') : css('--fg'), scale)
+        rows.push({ text: `${wide ? 'target' : 'is'}${name(l.target)}`, tone: l.target, textColor: css('--fg'), iconColor: css(`--t${l.target}`), bold: false })
+        if (l.pick !== undefined) rows.push({ text: `✗ you${name(l.pick)}`, tone: l.pick, textColor: css('--bad'), iconColor: css('--bad'), bold: true })
       }
+      const scale = 1.1
+      let tw = 0
+      for (const r of rows) {
+        g.font = `${r.bold ? '700' : '500'} 15px system-ui, sans-serif`
+        tw = Math.max(tw, g.measureText(r.text).width)
+      }
+      const x0 = x(l.t) - (tw + 8 + 24 * scale) / 2
+      rows.forEach((r, k) => {
+        const y0 = 44 + k * 23
+        g.font = `${r.bold ? '700' : '500'} 15px system-ui, sans-serif`
+        g.fillStyle = r.textColor
+        g.textAlign = 'left'
+        g.fillText(r.text, x0, y0)
+        drawGlyph(g, r.tone, x0 + tw + 8, y0 - 13, r.iconColor, scale)
+      })
+      g.textAlign = 'center'
+    } else if (l.sub) {
+      g.font = l.ok === undefined ? '12px system-ui, sans-serif' : '600 13px system-ui, sans-serif'
+      g.fillStyle = l.ok === false ? css('--bad') : css('--muted')
+      g.fillText(l.sub, x(l.t), 43)
     }
   }
 }
+
+const toneWord = (t: number) => (t === 0 ? 'neutral' : `T${t}`)
 
 /** Tone icon in a 24×16 box at (x, y). */
 function drawGlyph(g: CanvasRenderingContext2D, tone: number, x: number, y: number, color: string, scale = 1) {

@@ -246,3 +246,5 @@ button.link { min-height: 0; padding: 0; border: 0; background: none; color: var
 .segmented.compact button { min-height: 32px; font-size: 0.8rem; padding: 4px 6px; }
 
 .key.wrong { background: var(--bad); }
+
+.sandhi { list-style: none; padding: 0; margin: 6px 0; }

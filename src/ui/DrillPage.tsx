@@ -7,7 +7,7 @@ import { playUrl, stopPlayback, wavUrl } from '../audio/playback'
 import { startRecording, type Recording } from '../audio/recorder'
 import { audioUrl, loadManifest, refChao } from '../bank/load'
 import type { BankItem, ItemKind, Manifest } from '../bank/types'
-import { pickVoice, usableItems, voiceCount, voiceLabel } from '../bank/voices'
+import { manyVoices, pickVoice, usableItems, voiceCount, voiceLabel } from '../bank/voices'
 import { getPref, getProgress, recordScore, setPref } from '../store'
 import { ComboPicker } from './ComboPicker'
 import { comboScores } from './progress'
@@ -223,7 +223,7 @@ export function DrillPage({ range, calibrated, onCalibrate }: Props) {
 
         {plot}
         <div className="legend">
-          <span className="key ref" /> native <span className="key user" /> you
+          <span className="key ref" /> {manifest.speakers[item.speaker]?.tts ? 'TTS voice' : 'native'} <span className="key user" /> you
           {hum && <span className="muted"> · hum the melody, no words</span>}
         </div>
 
@@ -237,12 +237,12 @@ export function DrillPage({ range, calibrated, onCalibrate }: Props) {
           )}
           <button onClick={() => attempt && playUrl(attempt.wav)} disabled={!attempt || phase !== 'idle'}>▶ Me</button>
           <button onClick={playBoth} disabled={!attempt || phase !== 'idle'}>⇄ Both</button>
-          {voiceCount(manifest, item) > 1 && (
-            <button onClick={() => { setItem(pickVoice(manifest, item, item.speaker)); setAttempt(null) }} disabled={phase !== 'idle'} title="Same word, another voice">🔀 Voice</button>
+          {manyVoices(manifest) && (
+            <button onClick={() => { setItem(pickVoice(manifest, item, item.speaker)); setAttempt(null) }} disabled={phase !== 'idle' || voiceCount(manifest, item) < 2} title="Same word, another voice">🔀 Voice</button>
           )}
           <button onClick={() => pickItem(kind, combo, item)} disabled={phase === 'recording'}>Next →</button>
         </div>
-        {voiceCount(manifest, item) > 1 && <div className="muted small voice-tag">Voice: {voiceLabel(manifest, item.speaker)}</div>}
+        {manyVoices(manifest) && <div className="muted small voice-tag">Voice: {voiceLabel(manifest, item.speaker)}</div>}
       </section>
 
       {attempt && <Feedback attempt={attempt} item={item} />}

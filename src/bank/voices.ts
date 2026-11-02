@@ -51,6 +51,9 @@ export function pickVoice(manifest: Manifest, word: BankItem, avoid?: string, ra
   return withRecording(item, pool[Math.floor(rand() * pool.length)])
 }
 
+/** More than one voice is switched on, so voice controls are worth showing. */
+export const manyVoices = (manifest: Manifest) => Object.keys(manifest.speakers).filter((id) => voiceEnabled(manifest, id)).length > 1
+
 export const voiceCount = (manifest: Manifest, item: BankItem) => enabledRecordings(manifest, base(manifest, item)).length
 
 export function voiceLabel(manifest: Manifest, speaker: string): string {

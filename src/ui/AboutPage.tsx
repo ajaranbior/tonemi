@@ -20,6 +20,11 @@ export function AboutPage() {
             <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noreferrer">CC BY-SA</a>.
           </li>
           <li>
+            Extra voices (switchable in Drill/Ear settings): Microsoft Edge neural text-to-speech voices (Xiaoxiao, Xiaoyi, Yunxia,
+            Yunxi, Yunjian, Yunyang), generated with <a href="https://github.com/rany2/edge-tts" target="_blank" rel="noreferrer">edge-tts</a>{' '}
+            for personal, non-commercial use. Only clips whose pitch matches the expected tones are kept.
+          </li>
+          <li>
             Pitch detection: <a href="https://github.com/ianprime0509/pitchy" target="_blank" rel="noreferrer">pitchy</a>. Pinyin:{' '}
             <a href="https://github.com/zh-lx/pinyin-pro" target="_blank" rel="noreferrer">pinyin-pro</a>.
           </li>

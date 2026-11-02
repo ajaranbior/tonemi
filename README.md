@@ -18,7 +18,8 @@ A personal Mandarin tone **production and recognition** trainer. Runs entirely i
   The chart lives in a fixed-size box, so the buttons never move when the answer appears; after a
   mistake a second tab plays a word with the tones you picked. Optional streaks and points (Ear
   settings): a daily-practice streak that counts any answer, a right-in-a-row combo, and a bonus
-  for getting a previously missed word right.
+  for getting a previously missed word right. Words are played in a random voice (the native
+  speaker or one of six optional neural TTS voices); a missed word comes back in another voice.
   *Video mode*: load audio/video plus `.srt`/`.vtt`, the lines are split into words
   (`Intl.Segmenter`), clip boundaries are estimated from the pitch/energy of the audio,
   and you train on 1–3 words or a whole phrase at a time.
@@ -70,6 +71,12 @@ npm run build-bank -- /tmp/audio-cmn
 
 Adding `FILL=1` before `npm run build-bank` instead *adds* recordings for tone patterns that have fewer than 4 items,
 keeping every existing item and id (so saved progress stays valid).
+
+**Extra voices.** `npm run build-voices` (needs `pip install edge-tts` and `ffmpeg`) has six Microsoft Edge neural
+voices say every bank word, keeps only clips that pass the same pitch check, and stores them as extra recordings
+(`alts`) of the existing words, so ids and progress don't change. About half the clips pass, so 402 of the 504
+words have at least one extra voice. Each word is played by a random enabled voice; Drill and Ear settings
+can switch synthetic voices off, all together or one by one.
 
 The script picks common HSK words per tone combination (mixing sonorant-only
 words like 妈妈/名人 with words containing stops and fricatives), runs every clip

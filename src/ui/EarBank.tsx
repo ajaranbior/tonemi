@@ -4,7 +4,7 @@ import type { Tone } from '../analysis/tones'
 import { playUrl, stopPlayback } from '../audio/playback'
 import { audioUrl, loadManifest, refChao } from '../bank/load'
 import type { BankItem, ItemKind, Manifest } from '../bank/types'
-import { pickVoice, usableItems, voiceCount, voiceLabel } from '../bank/voices'
+import { manyVoices, pickVoice, usableItems, voiceCount, voiceLabel } from '../bank/voices'
 import { clearRetry, dueRetry, grade, pickByCombo, scheduleRetry, updateStat, type Retry } from '../ear/adapt'
 import { overrule, type TrialRecord } from '../ear/overrule'
 import { addEarConfusion, getEarCombos, getPref, setEarCombo, setPref } from '../store'
@@ -54,6 +54,7 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
   const [comeback, setComeback] = useState(false)
   const lastRec = useRef<TrialRecord | null>(null)
   const [sound, setSound] = useState(() => getPref<boolean>('ear.sound', true))
+  const [, setVoiceTick] = useState(0)
   const [autoReveal, setAutoReveal] = useState(() => getPref<boolean>('ear.auto', true))
   const review = useReview<BankItem>()
   const playToken = useRef(0)
@@ -305,11 +306,11 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
         <div className="controls ear-controls">
           <button className="primary" onClick={() => listen(1)} disabled={playing}>▶ Listen</button>
           <button onClick={() => listen(0.6)} disabled={playing}>🐢 Slow</button>
-          {!rv && voiceCount(manifest, shown) > 1 && (
-            <button onClick={otherVoice} disabled={playing} title="Same word, another voice">🔀 Voice</button>
+          {manyVoices(manifest) && (
+            <button onClick={otherVoice} disabled={playing || !!rv || voiceCount(manifest, shown) < 2} title="Same word, another voice">🔀 Voice</button>
           )}
         </div>
-        {voiceCount(manifest, shown) > 1 && <div className="muted small voice-tag">Voice: {voiceLabel(manifest, shown.speaker)}</div>}
+        {manyVoices(manifest) && <div className="muted small voice-tag">Voice: {voiceLabel(manifest, shown.speaker)}</div>}
 
         <h3 className="ear-q">{shownAnswered ? 'Answer' : `Which ${shown.syllables.length > 1 ? 'tones' : 'tone'} do you hear?`}</h3>
         <ToneAnswer chosen={shownChosen} expected={shownAnswered ? shown.surface : undefined} onPick={pick} />
@@ -346,7 +347,7 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
         <Toggle label="Sound effects and vibration for right/wrong" value={sound} onChange={(v) => { setSound(v); setPref('ear.sound', v) }} />
         <Toggle label="Reveal the answer as soon as all tones are chosen" value={autoReveal} onChange={(v) => { setAutoReveal(v); setPref('ear.auto', v) }} />
         <Toggle label="Show the character before answering" value={showHanzi} onChange={(v) => { setShowHanzi(v); setPref('ear.hanzi', v) }} />
-        <VoiceSettings manifest={manifest} />
+        <VoiceSettings manifest={manifest} onChange={() => setVoiceTick((x) => x + 1)} />
       </details>
     </>
   )

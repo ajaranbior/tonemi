@@ -10,7 +10,8 @@
     "lint": "oxlint",
     "test": "vitest run",
     "build-bank": "tsx scripts/build-bank.ts",
-    "dev:https": "HTTPS=1 vite --host"
+    "dev:https": "HTTPS=1 vite --host",
+    "build-voices": "tsx scripts/build-voices.ts"
   },
   "dependencies": {
     "pinyin-pro": "^3.29.5",

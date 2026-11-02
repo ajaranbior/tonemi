@@ -7,11 +7,13 @@ import { playUrl, stopPlayback, wavUrl } from '../audio/playback'
 import { startRecording, type Recording } from '../audio/recorder'
 import { audioUrl, loadManifest, refChao } from '../bank/load'
 import type { BankItem, ItemKind, Manifest } from '../bank/types'
+import { pickVoice, usableItems, voiceCount, voiceLabel } from '../bank/voices'
 import { getPref, getProgress, recordScore, setPref } from '../store'
 import { ComboPicker } from './ComboPicker'
 import { comboScores } from './progress'
 import { micError } from './errors'
 import { Toggle } from './Toggle'
+import { VoiceSettings } from './VoiceSettings'
 import { PitchPlot, type PlotLabel, type PlotLine } from './PitchPlot'
 import { marked, scoreClass, toneName } from './tone'
 
@@ -46,6 +48,8 @@ export function DrillPage({ range, calibrated, onCalibrate }: Props) {
   const [smoothOnly, setSmoothOnly] = useState(() => getPref<boolean>('drill.smooth', false))
   const [hum, setHum] = useState(() => getPref<boolean>('drill.hum', false))
   const [progressTick, setProgressTick] = useState(0)
+  /** Bumped when voice settings change, so the combo list follows the usable words. */
+  const [voiceTick, setVoiceTick] = useState(0)
   const recording = useRef<Recording | null>(null)
 
   useEffect(() => {
@@ -53,6 +57,8 @@ export function DrillPage({ range, calibrated, onCalibrate }: Props) {
   }, [])
 
   const refRange = manifest && item ? manifest.speakers[item.speaker].range : null
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const items = useMemo(() => (manifest ? usableItems(manifest) : []), [manifest, voiceTick])
   const scores = useMemo(
     () => (manifest ? comboScores(manifest.items, getProgress()) : new Map()),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -62,17 +68,18 @@ export function DrillPage({ range, calibrated, onCalibrate }: Props) {
   const pickItem = useCallback(
     (k: ItemKind, c: string, avoid?: BankItem | null) => {
       if (!manifest) return
-      let pool = manifest.items.filter((i) => i.kind === k)
+      let pool = items.filter((i) => i.kind === k)
       let target = c
-      if (c === 'auto') target = pickWeakCombo(pool, scores)
+      if (c === 'auto' || !pool.some((i) => i.combo === c)) target = pickWeakCombo(pool, scores)
       pool = pool.filter((i) => i.combo === target)
       if (smoothOnly && pool.some((i) => i.sonorant)) pool = pool.filter((i) => i.sonorant)
       if (pool.length > 1 && avoid) pool = pool.filter((i) => i.id !== avoid.id)
-      setItem(pool[Math.floor(Math.random() * pool.length)] ?? null)
+      const word = pool[Math.floor(Math.random() * pool.length)]
+      setItem(word ? pickVoice(manifest, word) : null)
       setAttempt(null)
       setLive(null)
     },
-    [manifest, scores, smoothOnly],
+    [manifest, items, scores, smoothOnly],
   )
 
   useEffect(() => {
@@ -190,7 +197,7 @@ export function DrillPage({ range, calibrated, onCalibrate }: Props) {
         </div>
       )}
 
-      <ComboPicker items={manifest.items} kind={kind} combo={combo} scores={scores} onChange={choose} />
+      <ComboPicker items={items} kind={kind} combo={combo} scores={scores} onChange={choose} />
 
       <section className="card item-card">
         <div className="item-head">
@@ -230,8 +237,12 @@ export function DrillPage({ range, calibrated, onCalibrate }: Props) {
           )}
           <button onClick={() => attempt && playUrl(attempt.wav)} disabled={!attempt || phase !== 'idle'}>▶ Me</button>
           <button onClick={playBoth} disabled={!attempt || phase !== 'idle'}>⇄ Both</button>
+          {voiceCount(manifest, item) > 1 && (
+            <button onClick={() => { setItem(pickVoice(manifest, item, item.speaker)); setAttempt(null) }} disabled={phase !== 'idle'} title="Same word, another voice">🔀 Voice</button>
+          )}
           <button onClick={() => pickItem(kind, combo, item)} disabled={phase === 'recording'}>Next →</button>
         </div>
+        {voiceCount(manifest, item) > 1 && <div className="muted small voice-tag">Voice: {voiceLabel(manifest, item.speaker)}</div>}
       </section>
 
       {attempt && <Feedback attempt={attempt} item={item} />}
@@ -242,6 +253,7 @@ export function DrillPage({ range, calibrated, onCalibrate }: Props) {
         <Toggle label="Start recording after Listen" value={autoRecord} onChange={(v) => { setAutoRecord(v); setPref('drill.autoRecord', v) }} />
         <Toggle label="Smooth consonants only (m n l r w y)" value={smoothOnly} onChange={(v) => { setSmoothOnly(v); setPref('drill.smooth', v) }} />
         <Toggle label="Hum-back mode" value={hum} onChange={(v) => { setHum(v); setPref('drill.hum', v) }} />
+        <VoiceSettings manifest={manifest} onChange={() => setVoiceTick((x) => x + 1)} />
       </details>
     </div>
   )

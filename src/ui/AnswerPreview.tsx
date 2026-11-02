@@ -4,6 +4,7 @@ import { playUrl, stopPlayback, wavUrl } from '../audio/playback'
 import { synthTones } from '../audio/synth'
 import { audioUrl, loadManifest, refChao } from '../bank/load'
 import type { BankItem, Manifest } from '../bank/types'
+import { pickVoice, usableItems } from '../bank/voices'
 import { PitchPlot, type PlotLabel, type PlotLine } from './PitchPlot'
 import { marked } from './tone'
 
@@ -40,7 +41,7 @@ export function AnswerPreview({ chosen, exclude, syllables }: Props) {
   const matches = useMemo(() => {
     const asked = syllables?.map(plain) ?? []
     const shared = (i: BankItem) => i.syllables.filter((s, k) => plain(s) === asked[k]).length
-    return (manifest?.items ?? [])
+    return (manifest ? usableItems(manifest) : [])
       .filter((i) => same(i.surface, chosen) && i.id !== exclude)
       .map((i) => ({ i, score: shared(i), r: Math.random() }))
       .sort((a, b) => b.score - a.score || a.r - b.r)
@@ -49,11 +50,13 @@ export function AnswerPreview({ chosen, exclude, syllables }: Props) {
   // Two 3rd tones in a row are never pronounced as 3-3 (the first becomes a 2nd tone), so there is no
   // recording of that surface pattern. Offer a word that is *written* with these tones instead.
   const written = useMemo(
-    () => (matches.length ? [] : (manifest?.items ?? []).filter((i) => same(i.lexical, chosen) && i.id !== exclude)),
+    () => (matches.length ? [] : (manifest ? usableItems(manifest) : []).filter((i) => same(i.lexical, chosen) && i.id !== exclude)),
     [manifest, matches, chosen, exclude],
   )
   const pool = matches.length ? matches : written
-  const item: BankItem | null = pool.length ? pool[round % pool.length] : null
+  const word = pool.length ? pool[round % pool.length] : null
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const item: BankItem | null = useMemo(() => (word && manifest ? pickVoice(manifest, word) : null), [word, manifest, round])
   const isWritten = !matches.length && !!item
   const sharedCount = item && syllables ? item.syllables.filter((s, k) => plain(s) === plain(syllables[k] ?? '')).length : 0
   const range = manifest ? Object.values(manifest.speakers)[0].range : null

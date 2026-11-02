@@ -21,15 +21,26 @@ export interface BankItem {
   speaker: string
   /** Relative to the manifest. */
   audio: string
-  ref: {
-    /** Seconds per frame. */
-    hop: number
-    /** Time of frame 0 in the audio file, seconds. */
-    t0: number
-    /** Semitones re 55 Hz per frame, null when unvoiced. */
-    st: (number | null)[]
-    segments: Segment[]
-  }
+  ref: RefPitch
+  /** The same word by other voices. */
+  alts?: Recording[]
+}
+
+export interface RefPitch {
+  /** Seconds per frame. */
+  hop: number
+  /** Time of frame 0 in the audio file, seconds. */
+  t0: number
+  /** Semitones re 55 Hz per frame, null when unvoiced. */
+  st: (number | null)[]
+  segments: Segment[]
+}
+
+/** One recording of a word: the item's own fields, or an entry of `alts`. */
+export interface Recording {
+  speaker: string
+  audio: string
+  ref: RefPitch
 }
 
 export interface Speaker {
@@ -37,6 +48,10 @@ export interface Speaker {
   source: string
   license: string
   range: SpeakerRange
+  /** Synthetic (text-to-speech) voice; these can be switched off in settings. */
+  tts?: boolean
+  /** Short label for the voice picker, e.g. "TTS female 1". */
+  short?: string
 }
 
 export interface Manifest {

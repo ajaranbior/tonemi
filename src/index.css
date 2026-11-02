@@ -156,6 +156,10 @@ button.link { min-height: 0; padding: 0; border: 0; background: none; color: var
 .toggle { display: flex; align-items: center; gap: 10px; min-height: 40px; }
 .toggle input { width: 20px; height: 20px; accent-color: var(--accent); }
 .toggles { display: flex; flex-wrap: wrap; gap: 0 16px; }
+.voice-settings { border-top: 1px solid var(--border); margin-top: 8px; padding-top: 4px; }
+.voice-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); padding-left: 30px; }
+.toggle.voice { min-height: 34px; }
+.voice-tag { font-size: 0.8em; }
 
 .prompt { padding-left: 20px; }
 .prompt li { margin: 6px 0; }

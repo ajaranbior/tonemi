@@ -4,10 +4,12 @@ import type { Tone } from '../analysis/tones'
 import { playUrl, stopPlayback } from '../audio/playback'
 import { audioUrl, loadManifest, refChao } from '../bank/load'
 import type { BankItem, ItemKind, Manifest } from '../bank/types'
+import { pickVoice, usableItems, voiceCount, voiceLabel } from '../bank/voices'
 import { clearRetry, dueRetry, grade, pickByCombo, scheduleRetry, updateStat, type Retry } from '../ear/adapt'
 import { overrule, type TrialRecord } from '../ear/overrule'
 import { addEarConfusion, getEarCombos, getPref, setEarCombo, setPref } from '../store'
 import { Toggle } from './Toggle'
+import { VoiceSettings } from './VoiceSettings'
 import { PitchPlot, type PlotLine } from './PitchPlot'
 import { answerOverlay } from './earPlot'
 import { marked } from './tone'
@@ -58,6 +60,8 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
   const trial = useRef(0)
   const retry = useRef<Retry[]>([])
   const autoplay = useRef(false)
+  /** Last voice each word was played in, so a missed word comes back in another voice. */
+  const lastVoice = useRef(new Map<string, string>())
 
   useEffect(() => {
     loadManifest().then(setManifest, (e) => setError(String(e)))
@@ -66,17 +70,20 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
   const next = useCallback(
     (k: Kind, avoid?: BankItem | null, play = true) => {
       if (!manifest) return
-      const byId = new Map(manifest.items.map((i) => [i.id, i]))
+      const usable = usableItems(manifest)
+      const byId = new Map(usable.map((i) => [i.id, i]))
       const inKind = (i: BankItem) => k === 'mix' || i.kind === k
       const due = dueRetry(retry.current, trial.current, (id) => !!byId.get(id) && inKind(byId.get(id)!) && id !== avoid?.id)
       let pick = due ? byId.get(due) : undefined
       if (!pick) {
         const kindNow = k === 'mix' ? BASIC[Math.floor(Math.random() * BASIC.length)] : k
-        let pool = manifest.items.filter((i) => i.kind === kindNow)
+        let pool = usable.filter((i) => i.kind === kindNow)
         if (pool.length > 1 && avoid) pool = pool.filter((i) => i.id !== avoid.id)
         pick = pickByCombo(pool, comboKey, getEarCombos())
       }
       if (!pick) return
+      pick = pickVoice(manifest, pick, lastVoice.current.get(pick.id))
+      lastVoice.current.set(pick.id, pick.speaker)
       if (item && answered) review.record({ item, chosen, accepted, rec: lastRec.current ?? undefined })
       review.leave()
       setAccepted(false)
@@ -123,6 +130,15 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
     }
     return () => stopPlayback()
   }, [shown, listen])
+
+  /** Same word, another voice (before or after answering). */
+  const otherVoice = () => {
+    if (!manifest || !item || rv) return
+    const v = pickVoice(manifest, item, item.speaker)
+    lastVoice.current.set(v.id, v.speaker)
+    autoplay.current = true
+    setItem(v)
+  }
 
   const choose = (k: Kind) => {
     setKind(k)
@@ -289,7 +305,11 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
         <div className="controls ear-controls">
           <button className="primary" onClick={() => listen(1)} disabled={playing}>▶ Listen</button>
           <button onClick={() => listen(0.6)} disabled={playing}>🐢 Slow</button>
+          {!rv && voiceCount(manifest, shown) > 1 && (
+            <button onClick={otherVoice} disabled={playing} title="Same word, another voice">🔀 Voice</button>
+          )}
         </div>
+        {voiceCount(manifest, shown) > 1 && <div className="muted small voice-tag">Voice: {voiceLabel(manifest, shown.speaker)}</div>}
 
         <h3 className="ear-q">{shownAnswered ? 'Answer' : `Which ${shown.syllables.length > 1 ? 'tones' : 'tone'} do you hear?`}</h3>
         <ToneAnswer chosen={shownChosen} expected={shownAnswered ? shown.surface : undefined} onPick={pick} />
@@ -326,6 +346,7 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
         <Toggle label="Sound effects and vibration for right/wrong" value={sound} onChange={(v) => { setSound(v); setPref('ear.sound', v) }} />
         <Toggle label="Reveal the answer as soon as all tones are chosen" value={autoReveal} onChange={(v) => { setAutoReveal(v); setPref('ear.auto', v) }} />
         <Toggle label="Show the character before answering" value={showHanzi} onChange={(v) => { setShowHanzi(v); setPref('ear.hanzi', v) }} />
+        <VoiceSettings manifest={manifest} />
       </details>
     </>
   )

@@ -215,6 +215,8 @@ button.link { min-height: 0; padding: 0; border: 0; background: none; color: var
 
 /* Header row reserves room for hanzi + pinyin, with the result chip on the right */
 .ear-head { min-height: 72px; margin-bottom: 4px; }
+.review-slot { flex: 1; min-width: 0; align-self: center; display: flex; justify-content: center; }
+.review-pill { padding: 4px 10px; border-radius: 999px; font-size: 0.85rem; white-space: nowrap; background: color-mix(in srgb, var(--accent) 12%, var(--card)); }
 .result-chip { flex: none; padding: 6px 12px; border-radius: 999px; font-weight: 700; font-size: 0.95rem; white-space: nowrap; animation: pop 0.25s ease-out; }
 .result-chip.ok { background: color-mix(in srgb, var(--good) 20%, var(--card)); color: var(--good); }
 .result-chip.bad { background: color-mix(in srgb, var(--bad) 18%, var(--card)); color: var(--bad); }

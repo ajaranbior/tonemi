@@ -255,7 +255,6 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
   return (
     <>
       <section className={`card ${g ? (g.all || ok ? 'flash-ok' : 'flash-bad') : ''}`}>
-        {rv && <div className="banner">Reviewing an earlier word ({(review.index ?? 0) + 1} of {review.count})</div>}
         <div className="item-head ear-head">
           <div>
             {shownAnswered || showHanzi ? (
@@ -273,6 +272,7 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
               <div className="hanzi muted" aria-label="Word hidden">？</div>
             )}
           </div>
+          {rv && <div className="review-slot"><span className="review-pill" title="Reviewing an earlier word">↩ Review {(review.index ?? 0) + 1} of {review.count}</span></div>}
           {g && <ResultChip key={shown.id + shownChosen.join('') + String(ok)} grade={g} accepted={ok} comeback={game && !rv && comeback} />}
         </div>
 

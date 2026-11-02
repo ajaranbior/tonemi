@@ -380,7 +380,6 @@ export default function EarClips({ onAnswered, onOverride, game, onGame }: EarPr
         <>
           
           <section className={`card ${g ? (g.all || ok ? 'flash-ok' : 'flash-bad') : ''}`}>
-            {rv && <div className="banner">Reviewing an earlier clip ({(review.index ?? 0) + 1} of {review.count})</div>}
             <div className="item-head ear-head">
               <div>
                 {sAnswered ? (
@@ -396,6 +395,7 @@ export default function EarClips({ onAnswered, onOverride, game, onGame }: EarPr
                   <div className="hanzi muted" aria-label="Clip text hidden">？</div>
                 )}
               </div>
+              {rv && <div className="review-slot"><span className="review-pill" title="Reviewing an earlier clip">↩ Review {(review.index ?? 0) + 1} of {review.count}</span></div>}
               {g && <ResultChip key={sClip.id + sChosen.join('') + String(ok)} grade={g} accepted={ok} comeback={game && !rv && comeback} />}
             </div>
 

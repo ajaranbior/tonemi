@@ -1,6 +1,6 @@
 import { pinyin as toPinyin } from 'pinyin-pro'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { chaoTrack, rangeFromSemitones } from '../analysis/normalize'
+import { chaoTrack, rangeFromSemitones, type SpeakerRange } from '../analysis/normalize'
 import { hzToSt, type PitchTrack } from '../analysis/pitch'
 import { segmentSyllables, type Segment } from '../analysis/segment'
 import type { Tone } from '../analysis/tones'
@@ -16,13 +16,18 @@ import { overrule, type TrialRecord } from '../ear/overrule'
 import { addEarConfusion, getEarCombos, getPref, setEarCombo, setPref } from '../store'
 import { parseSubtitles, type Cue } from '../subtitles'
 import { Toggle } from './Toggle'
+import { LoopLength } from './LoopLength'
 import { PitchPlot, type PlotLine } from './PitchPlot'
 import { answerOverlay } from './earPlot'
 import { EarStage, ResultChip } from './EarStage'
+import type { PreviewVoice } from './AnswerPreview'
 import { SandhiNote, ToneAnswer } from './ToneAnswer'
 import type { EarProps } from './EarBank'
 import { turnedGreen } from '../ear/game'
 import { useReview } from './useReview'
+import { AnkiSource, type AnkiLoaded } from './AnkiSource'
+import { wavBlob } from '../anki/stitch'
+import { SR } from '../analysis/pitch'
 import { FEEDBACK_SECONDS, playFeedback } from '../audio/sfx'
 
 interface Clip {
@@ -44,17 +49,25 @@ interface Clip {
 }
 
 const SIZES: [number, string][] = [[1, '1 word'], [2, '2 words'], [3, '3 words'], [0, 'Phrase']]
+/** Clip size: only the word the Anki card teaches. */
+const TARGET = -1
 const PAD_BEFORE = 0.06
 const PAD_AFTER = 0.1
 
-export default function EarClips({ onAnswered, onOverride, game, onGame }: EarProps) {
+/** Where the audio comes from: a file + subtitles, or notes pulled from Anki. */
+export type ClipSource = 'video' | 'anki'
+
+export default function EarClips({ onAnswered, onOverride, game, onGame, source = 'video' }: EarProps & { source?: ClipSource }) {
+  const anki = source === 'anki'
   const [media, setMedia] = useState<{ url: string; video: boolean; name: string } | null>(null)
   const [cues, setCues] = useState<Cue[]>([])
   const [subName, setSubName] = useState<string | null>(null)
   const [native, setNative] = useState<PitchTrack | null>(null)
+  const [samples, setSamples] = useState<Float32Array | null>(null)
   const [status, setStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [words, setWords] = useState(() => getPref<string>('ear.words', '2'))
+  const sizeKey = anki ? 'anki.words' : 'ear.words'
+  const [words, setWords] = useState(() => getPref<string>(sizeKey, anki ? String(TARGET) : '2'))
   const [showVideo, setShowVideo] = useState(() => getPref<boolean>('ear.video', false))
   const [clip, setClip] = useState<Clip | null>(null)
   const [chosen, setChosen] = useState<(Tone | null)[]>([])
@@ -95,6 +108,7 @@ export default function EarClips({ onAnswered, onOverride, game, onGame }: EarPr
 
   const loadMedia = async (file: File) => {
     setNative(null)
+    setSamples(null)
     setClip(null)
     stopSpan(mediaEl.current)
     if (media) URL.revokeObjectURL(media.url)
@@ -102,6 +116,7 @@ export default function EarClips({ onAnswered, onOverride, game, onGame }: EarPr
     try {
       setStatus('Decoding audio…')
       const samples = await decodeTo16k(audioContext(), await file.arrayBuffer())
+      setSamples(samples)
       setStatus('Analysing pitch…')
       setNative(await trackInWorker(samples))
       setStatus(null)
@@ -111,25 +126,51 @@ export default function EarClips({ onAnswered, onOverride, game, onGame }: EarPr
     }
   }
 
+  /** Already-decoded audio with its own cues (Anki notes joined into one track). */
+  const loadDecoded = async ({ samples, cues, label }: AnkiLoaded) => {
+    setError(null)
+    setNative(null)
+    setSamples(null)
+    setClip(null)
+    stopSpan(mediaEl.current)
+    if (media) URL.revokeObjectURL(media.url)
+    setMedia({ url: URL.createObjectURL(wavBlob(samples, SR)), video: false, name: label })
+    setCues(cues)
+    setSubName(label)
+    setSamples(samples)
+    try {
+      setStatus('Analysing pitch…')
+      setNative(await trackInWorker(samples))
+      setStatus(null)
+    } catch (e) {
+      setStatus(null)
+      setError(`Pitch analysis failed (${String(e)}).`)
+    }
+  }
+
   // Cues worth training on: has Chinese, long enough, not a rolling-caption duplicate.
   const usable = useMemo(() => {
     const out: { cue: Cue; index: number }[] = []
     cues.forEach((cue, index) => {
       if (cue.end - cue.start < 0.4 || !/\p{Script=Han}/u.test(cue.text)) return
-      if (out.length && out[out.length - 1].cue.text === cue.text) return
+      if (out.length && out[out.length - 1].cue.text === cue.text && !cue.focus) return
       out.push({ cue, index })
     })
     return out
   }, [cues])
 
+  const hasTargets = useMemo(() => usable.some(({ cue }) => cue.focus), [usable])
+  const sizes = useMemo<[number, string][]>(() => (hasTargets ? [[TARGET, 'Learning word'], ...SIZES] : SIZES), [hasTargets])
+
   const clips = useMemo<Clip[]>(() => {
-    const n = Number(words)
+    const n = Number(words) === TARGET && !hasTargets ? 2 : Number(words)
     const out: Clip[] = []
     for (const { cue, index } of usable) {
-      const { chars, tones, lexical } = sentenceTones(cue.text)
+      const { chars, tones, lexical } = sentenceTones(cue.text, cue.tones)
       const han = hanIndex(cue.text)
       const syl = toPinyin(cue.text, { toneType: 'none', type: 'array', v: true, nonZh: 'removed' })
-      for (const r of buildClips(cue.text, n)) {
+      const ranges = n === TARGET ? (cue.focus ? [{ from: cue.focus[0], to: cue.focus[1] }] : []) : buildClips(cue.text, n)
+      for (const r of ranges) {
         const h0 = han[r.from]
         const h1 = han[r.to - 1]
         const t = tones.slice(r.from, r.to)
@@ -152,7 +193,7 @@ export default function EarClips({ onAnswered, onOverride, game, onGame }: EarPr
       }
     }
     return out
-  }, [usable, words])
+  }, [usable, words, hasTargets])
 
   // Speaker range and Chao track from the voiced speech inside the cues.
   const ready = useMemo(() => {
@@ -303,7 +344,7 @@ export default function EarClips({ onAnswered, onOverride, game, onGame }: EarPr
   }, [rv, review, next, clip])
 
   // Keys: digits fill the next empty syllable, Enter checks/continues, Space or R replays,
-  // ← goes back to the previous clip, → forward / next.
+  // ← or Q goes back to the previous clip, → or E forward / next.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || !clip) return
@@ -311,10 +352,10 @@ export default function EarClips({ onAnswered, onOverride, game, onGame }: EarPr
         e.preventDefault()
         if (sAnswered) advance()
         else if (!autoReveal) check()
-      } else if (e.key === 'ArrowLeft') {
+      } else if (e.key === 'ArrowLeft' || e.key === 'q' || e.key === 'Q') {
         e.preventDefault()
         review.back()
-      } else if (e.key === 'ArrowRight') {
+      } else if (e.key === 'ArrowRight' || e.key === 'e' || e.key === 'E') {
         e.preventDefault()
         if (sAnswered) advance()
       } else if (e.key === 'Backspace') {
@@ -344,24 +385,36 @@ export default function EarClips({ onAnswered, onOverride, game, onGame }: EarPr
   const g = sClip && sAnswered ? grade(sClip.tones, sChosen) : null
   const ok = rv ? !!rv.accepted : accepted
   const sSpan = sClip ? span(sClip) : null
+  const s0 = sSpan?.[0]
+  const s1 = sSpan?.[1]
+  const sVoice = useMemo(
+    () => (sClip && ready && s0 !== undefined && s1 !== undefined ? clipVoice(sClip, [s0, s1], ready, samples) : undefined),
+    [sClip, s0, s1, ready, samples],
+  )
 
   return (
     <>
       <section className="card">
-        <h2>Train on a video</h2>
-        <label className="file">
-          <input type="file" multiple accept="audio/*,video/*,.srt,.vtt,text/vtt" onChange={(e) => { void loadFiles(e.target.files); e.target.value = '' }} />
-          <span>📂 Choose audio/video + subtitles</span>
-        </label>
-        <p className="muted small">
-          Select the media file and the .srt/.vtt together (or one after the other).
-        </p>
-        <p className="muted small">
-          {media ? `🎬 ${media.name}` : 'No audio/video yet'} · {subName ? `💬 ${subName} (${usable.length} lines)` : 'no subtitles yet'}
-        </p>
+        {anki ? (
+          <AnkiSource onLoad={loadDecoded} busy={status !== null} />
+        ) : (
+          <>
+            <h2>Train on a video</h2>
+            <label className="file">
+              <input type="file" multiple accept="audio/*,video/*,.srt,.vtt,text/vtt" onChange={(e) => { void loadFiles(e.target.files); e.target.value = '' }} />
+              <span>📂 Choose audio/video + subtitles</span>
+            </label>
+            <p className="muted small">
+              Select the media file and the .srt/.vtt together (or one after the other).
+            </p>
+            <p className="muted small">
+              {media ? `🎬 ${media.name}` : 'No audio/video yet'} · {subName ? `💬 ${subName} (${usable.length} lines)` : 'no subtitles yet'}
+            </p>
+          </>
+        )}
         {status && <p className="muted small">{status}</p>}
         {error && <p className="bad small">{error}</p>}
-        <YoutubeHelp />
+        {!anki && <YoutubeHelp />}
         {media &&
           (media.video ? (
             <video ref={mediaEl} src={media.url} playsInline className="media" hidden={!showVideo} />
@@ -376,7 +429,6 @@ export default function EarClips({ onAnswered, onOverride, game, onGame }: EarPr
         <>
           
           <section className={`card ${g ? (g.all || ok ? 'flash-ok' : 'flash-bad') : ''}`}>
-            {rv && <div className="banner">Reviewing an earlier clip ({(review.index ?? 0) + 1} of {review.count})</div>}
             <div className="item-head ear-head">
               <div>
                 {sAnswered ? (
@@ -392,25 +444,26 @@ export default function EarClips({ onAnswered, onOverride, game, onGame }: EarPr
                   <div className="hanzi muted" aria-label="Clip text hidden">？</div>
                 )}
               </div>
+              {rv && <div className="review-slot"><span className="review-pill" title="Reviewing an earlier clip">↩ Review {(review.index ?? 0) + 1} of {review.count}</span></div>}
               {g && <ResultChip key={sClip.id + sChosen.join('') + String(ok)} grade={g} accepted={ok} comeback={game && !rv && comeback} />}
             </div>
 
             <EarStage
               key={sClip.id + String(review.index)}
               answered={sAnswered && !!g}
-              chart={g && <ClipChart clip={sClip} chosen={sChosen} ready={ready} span={sSpan} cursor={cursor} />}
+              chart={g && <ClipChart clip={sClip} chosen={sChosen} ready={ready} span={sSpan} cursor={cursor} samples={samples} />}
               slots={sClip.tones.length}
               duration={sSpan ? sSpan[1] - sSpan[0] : 1}
               cursor={cursor !== undefined && sSpan ? cursor - sSpan[0] : undefined}
               playing={playing}
               onPlay={() => void play(sClip)}
-              preview={g && !g.all && !ok ? { chosen: sChosen as Tone[], syllables: sClip.syllables } : null}
+              preview={g && !g.all && !ok ? { chosen: sChosen as Tone[], syllables: sClip.syllables, voice: sVoice } : null}
             />
 
             <div className="controls ear-controls">
               <button className="primary" onClick={() => play(sClip)} disabled={playing}>▶ Clip</button>
               <button onClick={() => play(sClip, 0.6)} disabled={playing}>🐢 Slow</button>
-              <button onClick={() => play(sClip, 1, true)} disabled={playing}>▶ Line</button>
+              <button onClick={() => play(sClip, 1, true)} disabled={playing}>{anki ? '▶ Sentence' : '▶ Line'}</button>
             </div>
 
             <h3 className="ear-q">{sAnswered ? 'Answer' : `Tones of the ${sClip.tones.length} syllable${sClip.tones.length > 1 ? 's' : ''}?`}</h3>
@@ -432,8 +485,8 @@ export default function EarClips({ onAnswered, onOverride, game, onGame }: EarPr
             {!autoReveal && !sAnswered && <button className="link small" onClick={() => next(clip)}>Skip (clip cut badly / audio unclear)</button>}
             {sAnswered && (
               <>
-                <p className="muted small">Line: {cues[sClip.cue].text}</p>
-                <p className="muted small">Answers come from the subtitle text, so rare readings can be wrong, and clip edges are estimated.</p>
+                <p className="muted small">{anki ? 'Sentence' : 'Line'}: {cues[sClip.cue].text}</p>
+                <p className="muted small">{anki ? 'Tones come from your card (its pinyin for the word you are learning, otherwise a dictionary), with tone changes in the sentence applied; clip edges are estimated from the audio.' : 'Answers come from the subtitle text, so rare readings can be wrong, and clip edges are estimated.'}</p>
               </>
             )}
           </section>
@@ -441,13 +494,13 @@ export default function EarClips({ onAnswered, onOverride, game, onGame }: EarPr
           <div className="options">
 <p className="muted small">Clip size</p>
 <div className="segmented compact" role="tablist" aria-label="Clip size">
-            {SIZES.map(([n, label]) => (
+            {sizes.map(([n, label]) => (
               <button
                 key={n}
                 role="tab"
-                aria-selected={words === String(n)}
-                className={words === String(n) ? 'active' : ''}
-                onClick={() => { setWords(String(n)); setPref('ear.words', String(n)); setClip(null) }}
+                aria-selected={words === String(n) || (n === 2 && words === String(TARGET) && !hasTargets)}
+                className={words === String(n) || (n === 2 && words === String(TARGET) && !hasTargets) ? 'active' : ''}
+                onClick={() => { setWords(String(n)); setPref(sizeKey, String(n)); setClip(null) }}
               >
                 {label}
               </button>
@@ -456,12 +509,13 @@ export default function EarClips({ onAnswered, onOverride, game, onGame }: EarPr
 
 </div>
 <details className="card settings">
-            <summary>Video settings</summary>
+            <summary>{anki ? 'Anki settings' : 'Video settings'}</summary>
             <Toggle label="Streaks and points" value={game} onChange={onGame} />
             <Toggle label="Sound effects and vibration for right/wrong" value={sound} onChange={(v) => { setSound(v); setPref('ear.sound', v) }} />
             <Toggle label="Reveal the answer as soon as all tones are chosen" value={autoReveal} onChange={(v) => { setAutoReveal(v); setPref('ear.auto', v) }} />
             {media?.video && <Toggle label="Show video (may reveal burned-in subtitles)" value={showVideo} onChange={(v) => { setShowVideo(v); setPref('ear.video', v) }} />}
-            <p className="muted small">Pitch range is estimated from the speech in the subtitled lines; background music or several speakers make the chart less accurate.</p>
+            <LoopLength />
+            <p className="muted small">Pitch range is estimated from the speech in the {anki ? 'loaded cards, so a deck with several speakers makes the chart less accurate' : 'subtitled lines; background music or several speakers make the chart less accurate'}.</p>
           </details>
         </>
       )}
@@ -471,30 +525,53 @@ export default function EarClips({ onAnswered, onOverride, game, onGame }: EarPr
 
 const byIdHas = (clips: Clip[], c: Clip) => clips.some((x) => x.id === c.id)
 
-function ClipChart({ clip, chosen, ready, span, cursor }: { clip: Clip; chosen: (Tone | null)[]; ready: { track: PitchTrack; chao: Float32Array }; span: [number, number] | null; cursor?: number }) {
+/** Frames to chart for a clip (with some context) and its syllable segments, or null if too short. */
+function clipView(span: [number, number] | null, track: PitchTrack, n: number): { from: number; to: number; segments: Segment[] } | null {
+  if (!span) return null
+  const hop = track.hop
+  const len = track.hz.length
+  const a = Math.max(0, Math.floor((span[0] + PAD_BEFORE - 0.032) / hop))
+  const b = Math.min(len, Math.ceil((span[1] - PAD_AFTER - 0.032) / hop))
+  if (b - a < 6) return null
+  const from = Math.max(0, a - 10)
+  const to = Math.min(len, b + 10)
+  const slice: PitchTrack = {
+    hop,
+    hz: track.hz.subarray(a, b),
+    rms: track.rms.subarray(a, b),
+    zcr: track.zcr.subarray(a, b),
+    creak: track.creak.subarray(a, b),
+  }
+  const seg = segmentSyllables(slice, n)
+  const segments: Segment[] = seg
+    ? seg.segments.map(([s, e]) => [s + a, e + a])
+    : Array.from({ length: n }, (_, i) => [Math.round(a + ((b - a) * i) / n), Math.round(a + ((b - a) * (i + 1)) / n)] as Segment)
+  return { from, to, segments }
+}
+
+/** The clip's own audio and pitch, so the preview can re-pitch it to the learner's answer. */
+function clipVoice(clip: Clip, span: [number, number] | null, ready: { track: PitchTrack; range: SpeakerRange }, samples: Float32Array | null): PreviewVoice | undefined {
+  const view = clipView(span, ready.track, clip.tones.length)
+  if (!view || !span || !samples) return undefined
+  const { from, to, segments } = view
+  const hop = ready.track.hop
+  return {
+    samples,
+    hop,
+    t0: from * hop,
+    st: Array.from(ready.track.hz.subarray(from, to), (hz) => (Number.isNaN(hz) ? NaN : hzToSt(hz))),
+    segments: segments.map(([s, e]) => [s - from, e - from] as Segment),
+    range: ready.range,
+    from: span[0],
+    to: span[1],
+    expected: clip.tones,
+  }
+}
+
+function ClipChart({ clip, chosen, ready, span, cursor, samples }: { clip: Clip; chosen: (Tone | null)[]; ready: { track: PitchTrack; chao: Float32Array }; span: [number, number] | null; cursor?: number; samples: Float32Array | null }) {
   const { track, chao } = ready
   const hop = track.hop
-  const view = useMemo(() => {
-    if (!span) return null
-    const a = Math.max(0, Math.floor((span[0] + PAD_BEFORE - 0.032) / hop))
-    const b = Math.min(chao.length, Math.ceil((span[1] - PAD_AFTER - 0.032) / hop))
-    if (b - a < 6) return null
-    const from = Math.max(0, a - 10)
-    const to = Math.min(chao.length, b + 10)
-    const slice: PitchTrack = {
-      hop,
-      hz: track.hz.subarray(a, b),
-      rms: track.rms.subarray(a, b),
-      zcr: track.zcr.subarray(a, b),
-      creak: track.creak.subarray(a, b),
-    }
-    const n = clip.tones.length
-    const seg = segmentSyllables(slice, n)
-    const segments: Segment[] = seg
-      ? seg.segments.map(([s, e]) => [s + a, e + a])
-      : Array.from({ length: n }, (_, i) => [Math.round(a + ((b - a) * i) / n), Math.round(a + ((b - a) * (i + 1)) / n)] as Segment)
-    return { from, to, segments }
-  }, [span, track, chao, hop, clip.tones.length])
+  const view = useMemo(() => clipView(span, track, clip.tones.length), [span, track, clip.tones.length])
 
   if (!view) return <p className="muted small">Not enough voiced speech in this clip to draw a chart.</p>
   const { from, to, segments } = view
@@ -507,7 +584,7 @@ function ClipChart({ clip, chosen, ready, span, cursor }: { clip: Clip; chosen: 
   return (
     <>
       <div className="stage-plot">
-        <PitchPlot lines={lines} duration={(to - from) * hop} labels={labels} boundaries={boundaries} cursor={playhead} height="100%" />
+        <PitchPlot lines={lines} duration={(to - from) * hop} labels={labels} boundaries={boundaries} cursor={playhead} height="100%" scrub={{ samples, offset: from * hop + 0.032 }} />
       </div>
       <div className="legend">
         <span className="key ref" /> speaker
@@ -516,7 +593,7 @@ function ClipChart({ clip, chosen, ready, span, cursor }: { clip: Clip; chosen: 
             <span className="key wrong" /> the tone you picked
           </>
         )}
-        <span className="legend-hint">Space replays</span>
+        <span className="legend-hint">Space replays · hold & drag on the chart to loop a spot</span>
       </div>
     </>
   )

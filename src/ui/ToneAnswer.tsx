@@ -50,7 +50,7 @@ export function ToneAnswer({ chosen, expected, onPick }: Props) {
           })}
         </div>
       ))}
-      <p className="muted small keys">Keys: 1–4 tones · 5 neutral · Backspace undo · Enter check/next · Space replay · ← → previous/next · M mark correct</p>
+      <p className="muted small keys">Keys: 1–4 tones · 5 neutral · Backspace undo · Enter check/next · Space replay · ← → or Q E previous/next · M mark correct</p>
     </div>
   )
 }

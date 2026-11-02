@@ -1,7 +1,7 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Tone } from '../analysis/tones'
 import type { Grade } from '../ear/adapt'
-import { AnswerPreview } from './AnswerPreview'
+import { AnswerPreview, type PreviewVoice } from './AnswerPreview'
 import { PitchPlot } from './PitchPlot'
 
 interface StageProps {
@@ -15,7 +15,7 @@ interface StageProps {
   playing: boolean
   onPlay: () => void
   /** Set after a wrong answer: "your answer sounds like this" becomes a second tab in the same box. */
-  preview?: { chosen: Tone[]; exclude?: string; syllables?: string[] } | null
+  preview?: { chosen: Tone[]; exclude?: string; syllables?: string[]; voice?: PreviewVoice } | null
 }
 
 /**
@@ -26,6 +26,15 @@ interface StageProps {
 export function EarStage({ answered, chart, slots, duration, cursor, playing, onPlay, preview }: StageProps) {
   const [tab, setTab] = useState<'speaker' | 'yours'>('speaker')
   const yours = answered && !!preview && tab === 'yours'
+  // Coming back from "Your answer" replays what was said (the preview autoplays the other way).
+  // In an effect, not the click handler, so it starts after the preview's unmount has stopped its audio.
+  const prevTab = useRef(tab)
+  const play = useRef(onPlay)
+  play.current = onPlay
+  useEffect(() => {
+    if (prevTab.current === 'yours' && tab === 'speaker') play.current()
+    prevTab.current = tab
+  }, [tab])
   return (
     <div className="stage">
       {answered && preview && (
@@ -42,7 +51,7 @@ export function EarStage({ answered, chart, slots, duration, cursor, playing, on
         {!answered ? (
           <Placeholder slots={slots} duration={duration} cursor={cursor} playing={playing} onPlay={onPlay} />
         ) : yours && preview ? (
-          <AnswerPreview chosen={preview.chosen} exclude={preview.exclude} syllables={preview.syllables} />
+          <AnswerPreview chosen={preview.chosen} exclude={preview.exclude} syllables={preview.syllables} voice={preview.voice} />
         ) : (
           chart
         )}

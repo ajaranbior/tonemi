@@ -10,12 +10,13 @@ import { ToneChip, ToneGlyph } from './ToneGlyph'
 // The video mode pulls in the pinyin dictionary; load it only when opened.
 const EarClips = lazy(() => import('./EarClips'))
 
-type Mode = 'words' | 'video'
+type Mode = 'words' | 'video' | 'anki'
+const MODES: Mode[] = ['words', 'video', 'anki']
 
 export function EarPage() {
   const route = useRoute()
-  // #/ear/video or #/ear/words; a bare #/ear restores the last used mode.
-  const mode: Mode = route[1] === 'video' || route[1] === 'words' ? route[1] : (getPref('ear.mode', 'words') as Mode)
+  // #/ear/words, #/ear/video or #/ear/anki; a bare #/ear restores the last used mode.
+  const mode: Mode = MODES.includes(route[1] as Mode) ? (route[1] as Mode) : (getPref('ear.mode', 'words') as Mode)
   // Make the mode explicit in the URL so history entries (Back) are unambiguous.
   useEffect(() => {
     if (route[1] !== mode) history.replaceState(null, '', `#/ear/${mode}`)
@@ -81,7 +82,7 @@ export function EarPage() {
         <EarBank onAnswered={answered} onOverride={overridden} game={game} onGame={toggleGame} />
       ) : (
         <Suspense fallback={<div className="card">Loading…</div>}>
-          <EarClips onAnswered={answered} onOverride={overridden} game={game} onGame={toggleGame} />
+          <EarClips key={mode} source={mode} onAnswered={answered} onOverride={overridden} game={game} onGame={toggleGame} />
         </Suspense>
       )}
 
@@ -93,6 +94,9 @@ export function EarPage() {
           </button>
           <button role="tab" aria-selected={mode === 'video'} className={mode === 'video' ? 'active' : ''} onClick={() => choose('video')}>
             🎬 Video / audio
+          </button>
+          <button role="tab" aria-selected={mode === 'anki'} className={mode === 'anki' ? 'active' : ''} onClick={() => choose('anki')}>
+            🗂 Anki
           </button>
         </div>
       </div>

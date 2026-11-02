@@ -27,6 +27,7 @@ export default function ShadowPage({ range }: { range: SpeakerRange }) {
   const [cues, setCues] = useState<Cue[]>([])
   const [subName, setSubName] = useState<string | null>(null)
   const [native, setNative] = useState<PitchTrack | null>(null)
+  const [samples, setSamples] = useState<Float32Array | null>(null)
   const [status, setStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [index, setIndex] = useState(0)
@@ -44,12 +45,14 @@ export default function ShadowPage({ range }: { range: SpeakerRange }) {
   const loadMedia = async (file: File) => {
     setError(null)
     setNative(null)
+    setSamples(null)
     setAttempts({})
     if (media) URL.revokeObjectURL(media.url)
     setMedia({ url: URL.createObjectURL(file), video: file.type.startsWith('video'), name: file.name })
     try {
       setStatus('Decoding audio…')
       const samples = await decodeTo16k(audioContext(), await file.arrayBuffer())
+      setSamples(samples)
       setStatus('Analysing pitch…')
       const track = await trackInWorker(samples)
       setNative(track)
@@ -179,7 +182,7 @@ export default function ShadowPage({ range }: { range: SpeakerRange }) {
       },
     ]
     if (attempt?.result) lines.push({ ...attempt.result.warped, kind: 'user' })
-    plot = <PitchPlot lines={lines} duration={cue.end - cue.start} cursor={cursor} />
+    plot = <PitchPlot lines={lines} duration={cue.end - cue.start} cursor={cursor} scrub={{ samples, offset: cue.start }} />
   }
 
   return (

@@ -16,13 +16,25 @@ A personal Mandarin tone **production and recognition** trainer. Runs entirely i
   card lists your most-confused tone pairs. After each answer you see the speaker's real
   pitch chart, and on a mistake the textbook shape of the tone you picked drawn over it.
   The chart lives in a fixed-size box, so the buttons never move when the answer appears; after a
-  mistake a second tab plays a word with the tones you picked. Optional streaks and points (Ear
+  mistake a second tab plays your answer: the same recording with its pitch moved to the tones you
+  picked (TD-PSOLA resynthesis, so it's the same voice and word), or a real recording of another word
+  with those tones. Optional streaks and points (Ear
   settings): a daily-practice streak that counts any answer, a right-in-a-row combo, and a bonus
   for getting a previously missed word right. Words are played in a random voice (the native
   speaker or one of six optional neural TTS voices); a missed word comes back in another voice.
   *Video mode*: load audio/video plus `.srt`/`.vtt`, the lines are split into words
   (`Intl.Segmenter`), clip boundaries are estimated from the pitch/energy of the audio,
   and you train on 1–3 words or a whole phrase at a time.
+  *Anki mode*: train on the audio of your own Anki cards. With Anki desktop open and the
+  [AnkiConnect](https://ankiweb.net/shared/info/2055492159) add-on installed, pick a deck (plus an
+  optional Anki search such as `tag:hsk3` or `rated:7`). Each load reads the cards' `[sound:…]` audio and
+  Chinese text straight from Anki, so new and edited cards show up the next time; the field holding the
+  audio and the one holding the sentence are found automatically or can be chosen. If a field holds the
+  word you're learning (e.g. `学习 xuéxí`, tone marks or numbers), only that word is cut out of the
+  sentence audio and quizzed, with its tones taken from your pinyin; the whole sentence stays one tap
+  away. A preview shows how the cards were read before any audio loads. The first time, Anki asks
+  whether to allow the site. Chrome, Edge and Firefox on the computer running Anki; Safari and phones
+  can't reach AnkiConnect.
 - **Shadowing** — load your own audio/video + `.srt`/`.vtt`, loop a line, echo
   it or shadow along; the whole-line melody is compared with DTW and scored.
   Subtitles show Mainland surface tones (一/不/3-3 sandhi, neutral tones).

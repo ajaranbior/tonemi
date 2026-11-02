@@ -1,7 +1,13 @@
+import type { Tone } from './analysis/tones'
+
 export interface Cue {
   start: number
   end: number
   text: string
+  /** Code-point range [from, to) of the word being learned (Anki cards), if known. */
+  focus?: [number, number]
+  /** Known lexical tones by code-point index, overriding the dictionary. */
+  tones?: (Tone | null)[]
 }
 
 /** Parse SRT or WebVTT. */

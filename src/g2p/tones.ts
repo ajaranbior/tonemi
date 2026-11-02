@@ -50,7 +50,11 @@ const SENTENCE_NEUTRAL = new Set([...'们么的了着吗呢吧啊呀嘛'])
  * Tones for running text (a subtitle line): lexical tones with neutral words
  * found by scanning, then sandhi. Non-Chinese characters get no tone.
  */
-export function sentenceTones(text: string): {
+export function sentenceTones(
+  text: string,
+  /** Known lexical tones by code-point index (e.g. from the card's pinyin); sandhi is still applied. */
+  override?: readonly (Tone | null | undefined)[],
+): {
   chars: string[]
   tones: (Tone | null)[]
   /** Tones before sandhi (neutral tones applied). */
@@ -72,6 +76,10 @@ export function sentenceTones(text: string): {
     for (let k = 0; k < run.length; k++) {
       if (k > 0 && (NEUTRAL_FINAL.has(run[k - 1] + run[k]) || SENTENCE_NEUTRAL.has(run[k]))) lex[k] = 0
       if (k > 0 && run[k] === '子' && lex[k] === 3) lex[k] = 0
+    }
+    for (let k = 0; k < run.length; k++) {
+      const o = override?.[i + k]
+      if (o !== null && o !== undefined) lex[k] = o
     }
     const s = surfaceTones(run, lex)
     lex.forEach((t, k) => (lexical[i + k] = t))

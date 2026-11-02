@@ -9,14 +9,17 @@ import { clearRetry, dueRetry, grade, pickByCombo, scheduleRetry, updateStat, ty
 import { overrule, type TrialRecord } from '../ear/overrule'
 import { addEarConfusion, getEarCombos, getPref, setEarCombo, setPref } from '../store'
 import { Toggle } from './Toggle'
+import { LoopLength } from './LoopLength'
 import { VoiceSettings } from './VoiceSettings'
 import { PitchPlot, type PlotLine } from './PitchPlot'
 import { answerOverlay } from './earPlot'
 import { marked } from './tone'
 import { EarStage, ResultChip } from './EarStage'
+import type { PreviewVoice } from './AnswerPreview'
 import { SandhiNote, ToneAnswer } from './ToneAnswer'
 import { turnedGreen } from '../ear/game'
 import { useReview } from './useReview'
+import { useSamples } from './useSamples'
 import { FEEDBACK_SECONDS, playFeedback } from '../audio/sfx'
 
 type Kind = ItemKind | 'mix'
@@ -214,7 +217,7 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
   }, [rv, review, next, kind, item])
 
   // Keyboard: digits fill the next empty syllable, Enter checks/continues, Space or R replays,
-  // ← goes back to the previous word, → forward / next.
+  // ← or Q goes back to the previous word, → or E forward / next.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || !item) return
@@ -222,10 +225,10 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
         e.preventDefault()
         if (shownAnswered) advance()
         else if (!autoReveal) check()
-      } else if (e.key === 'ArrowLeft') {
+      } else if (e.key === 'ArrowLeft' || e.key === 'q' || e.key === 'Q') {
         e.preventDefault()
         review.back()
-      } else if (e.key === 'ArrowRight') {
+      } else if (e.key === 'ArrowRight' || e.key === 'e' || e.key === 'E') {
         e.preventDefault()
         if (shownAnswered) advance()
       } else if (e.key === 'Backspace') {
@@ -253,6 +256,14 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
 
   const refRange: SpeakerRange | null = manifest && shown ? manifest.speakers[shown.speaker].range : null
   const complete = chosen.length > 0 && chosen.every((c) => c !== null)
+  // The asked recording, for "your answer in the same voice".
+  const voice = useMemo<PreviewVoice | undefined>(
+    () =>
+      shown && refRange
+        ? { url: audioUrl(shown), hop: shown.ref.hop, t0: shown.ref.t0, st: shown.ref.st, segments: shown.ref.segments, range: refRange, expected: shown.surface }
+        : undefined,
+    [shown, refRange],
+  )
   const g = useMemo(() => (shown && shownAnswered ? grade(shown.surface, shownChosen) : null), [shown, shownAnswered, shownChosen])
 
   if (error)
@@ -270,7 +281,6 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
   return (
     <>
       <section className={`card ${g ? (g.all || ok ? 'flash-ok' : 'flash-bad') : ''}`}>
-        {rv && <div className="banner">Reviewing an earlier word ({(review.index ?? 0) + 1} of {review.count})</div>}
         <div className="item-head ear-head">
           <div>
             {shownAnswered || showHanzi ? (
@@ -288,6 +298,7 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
               <div className="hanzi muted" aria-label="Word hidden">？</div>
             )}
           </div>
+          {rv && <div className="review-slot"><span className="review-pill" title="Reviewing an earlier word">↩ Review {(review.index ?? 0) + 1} of {review.count}</span></div>}
           {g && <ResultChip key={shown.id + shownChosen.join('') + String(ok)} grade={g} accepted={ok} comeback={game && !rv && comeback} />}
         </div>
 
@@ -300,7 +311,7 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
           cursor={cursor}
           playing={playing}
           onPlay={() => void listen()}
-          preview={g && !g.all && !ok ? { chosen: shownChosen as Tone[], exclude: shown.id, syllables: shown.syllables } : null}
+          preview={g && !g.all && !ok ? { chosen: shownChosen as Tone[], exclude: shown.id, syllables: shown.syllables, voice } : null}
         />
 
         <div className="controls ear-controls">
@@ -347,6 +358,7 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
         <Toggle label="Sound effects and vibration for right/wrong" value={sound} onChange={(v) => { setSound(v); setPref('ear.sound', v) }} />
         <Toggle label="Reveal the answer as soon as all tones are chosen" value={autoReveal} onChange={(v) => { setAutoReveal(v); setPref('ear.auto', v) }} />
         <Toggle label="Show the character before answering" value={showHanzi} onChange={(v) => { setShowHanzi(v); setPref('ear.hanzi', v) }} />
+        <LoopLength />
         <VoiceSettings manifest={manifest} onChange={() => setVoiceTick((x) => x + 1)} />
       </details>
     </>
@@ -361,10 +373,11 @@ function ReferenceChart({ item, range, chosen, pinyin, cursor }: { item: BankIte
     [item, chosen, pinyin, hop, chao],
   )
   const lines = useMemo<PlotLine[]>(() => [{ t: Array.from(chao, (_, i) => i * hop), v: chao, kind: 'ref' as const }, ...(guess ? [guess] : [])], [chao, hop, guess])
+  const samples = useSamples(audioUrl(item))
   return (
     <>
       <div className="stage-plot">
-        <PitchPlot lines={lines} duration={chao.length * hop} labels={labels} boundaries={boundaries} cursor={cursor} height="100%" />
+        <PitchPlot lines={lines} duration={chao.length * hop} labels={labels} boundaries={boundaries} cursor={cursor} height="100%" scrub={{ samples, offset: item.ref.t0 }} />
       </div>
       <div className="legend">
         <span className="key ref" /> the speaker's pitch
@@ -373,7 +386,7 @@ function ReferenceChart({ item, range, chosen, pinyin, cursor }: { item: BankIte
             <span className="key wrong" /> the tone you picked
           </>
         )}
-        <span className="legend-hint">Space replays</span>
+        <span className="legend-hint">Space replays · hold & drag on the chart to loop a spot</span>
       </div>
     </>
   )

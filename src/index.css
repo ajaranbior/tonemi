@@ -141,6 +141,7 @@ button.link { min-height: 0; padding: 0; border: 0; background: none; color: var
 .t1 { color: var(--t1); } .t2 { color: var(--t2); } .t3 { color: var(--t3); } .t4 { color: var(--t4); } .t0 { color: var(--t0); }
 
 .pitch-plot { width: 100%; display: block; border-radius: 10px; touch-action: pan-y; }
+.pitch-plot.scrubbable { cursor: ew-resize; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .legend { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--muted); margin-top: 6px; flex-wrap: wrap; }
 .key { display: inline-block; width: 18px; height: 4px; border-radius: 2px; }
 .key.ref { background: var(--ref); opacity: 0.6; height: 6px; }
@@ -218,6 +219,8 @@ button.link { min-height: 0; padding: 0; border: 0; background: none; color: var
 
 /* Header row reserves room for hanzi + pinyin, with the result chip on the right */
 .ear-head { min-height: 72px; margin-bottom: 4px; }
+.review-slot { flex: 1; min-width: 0; align-self: center; display: flex; justify-content: center; }
+.review-pill { padding: 4px 10px; border-radius: 999px; font-size: 0.85rem; white-space: nowrap; background: color-mix(in srgb, var(--accent) 12%, var(--card)); }
 .result-chip { flex: none; padding: 6px 12px; border-radius: 999px; font-weight: 700; font-size: 0.95rem; white-space: nowrap; animation: pop 0.25s ease-out; }
 .result-chip.ok { background: color-mix(in srgb, var(--good) 20%, var(--card)); color: var(--good); }
 .result-chip.bad { background: color-mix(in srgb, var(--bad) 18%, var(--card)); color: var(--bad); }
@@ -245,7 +248,11 @@ button.link { min-height: 0; padding: 0; border: 0; background: none; color: var
 .stage-play:disabled { opacity: 0.85; }
 .stage-preview { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 4px; }
 .preview-head { flex: none; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.preview-word { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.preview-word { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.preview-mode { flex: none; }
+.preview-mode button { flex: none; }
+/* With the source switcher in the head, the chart labels carry the pinyin. */
+.preview-mode ~ .preview-word .pinyin { display: none; }
 .preview-btns { display: flex; gap: 6px; flex: none; }
 .preview-btns button { min-height: 36px; min-width: 44px; padding: 4px 10px; }
 
@@ -315,3 +322,19 @@ button.link { min-height: 0; padding: 0; border: 0; background: none; color: var
 .key.wrong { background: var(--bad); }
 
 .sandhi { list-style: none; padding: 0; margin: 6px 0; }
+.slider-setting { display: flex; flex-direction: column; gap: 4px; padding: 6px 0; }
+.slider-setting input { width: 100%; max-width: 360px; accent-color: var(--accent); }
+
+/* Anki source */
+.field-label { display: block; margin-top: 6px; }
+.field-label .text-input { display: block; margin-top: 2px; }
+select.text-input { appearance: auto; }
+.anki-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0 8px; margin-bottom: 8px; }
+.anki-preview { margin: 4px 0 10px; }
+.anki-counts { padding-left: 18px; margin: 6px 0; }
+.anki-table { width: 100%; border-collapse: collapse; }
+.anki-table th { text-align: left; font-weight: 600; color: var(--muted, inherit); }
+.anki-table th, .anki-table td { padding: 4px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.anki-table mark { background: color-mix(in srgb, var(--accent) 22%, transparent); color: inherit; border-radius: 3px; padding: 0 1px; }
+.anki-tones { white-space: nowrap; }
+.anki-tones .glyph { vertical-align: middle; }

@@ -263,6 +263,24 @@ button.link { min-height: 0; padding: 0; border: 0; background: none; color: var
 .game-xp { position: relative; margin-left: auto; }
 .goal-ring { width: 16px; height: 16px; border-radius: 50%; background: conic-gradient(var(--good) var(--p), var(--band-a) 0); filter: none; }
 .game-stat:has(.goal-ring) { filter: none; opacity: 1; }
+.xp-btn { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; margin: -2px -6px; border-radius: 8px; }
+.xp-btn:focus-visible { outline: 2px solid var(--accent); }
+.xp-btn.nudge { animation: nudge-gold 0.9s ease-in-out 4; }
+@keyframes nudge-gold { 50% { background: color-mix(in srgb, var(--gold) 35%, transparent); box-shadow: 0 0 0 2px var(--gold); color: var(--gold-fg); } }
+.xp-pop {
+  display: none; position: absolute; right: -8px; top: calc(100% + 6px); z-index: 15; width: min(300px, calc(100vw - 32px));
+  padding: 10px 12px; border-radius: 12px; background: var(--card); border: 1px solid var(--border);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.18); white-space: normal; font-size: 0.85rem;
+}
+.xp-pop::before { content: ""; position: absolute; left: 0; right: 0; top: -8px; height: 8px; }
+.xp-pop p { margin: 0 0 6px; }
+.xp-pop p:last-child { margin: 6px 0 0; }
+.game-xp:hover .xp-pop, .game-xp.open .xp-pop { display: block; animation: fade-in 0.12s ease-out; }
+.xp-pop-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.xp-pop-grid { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(62px, 1fr)); gap: 4px; max-height: 220px; overflow-y: auto; }
+.xp-chip { display: flex; flex-direction: column; align-items: center; padding: 3px 2px; border-radius: 8px; border: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+.xp-chip.green { background: color-mix(in srgb, var(--good) 14%, var(--card)); border-color: color-mix(in srgb, var(--good) 45%, var(--border)); }
+.xp-chip.fresh { box-shadow: 0 0 0 2px var(--gold); }
 .points-float { position: absolute; right: 0; top: -4px; font-weight: 800; color: var(--good); pointer-events: none; animation: float-up 1.1s ease-out forwards; }
 .points-float.comeback { color: var(--gold-fg); font-size: 1.1rem; }
 @keyframes float-up { from { transform: translateY(0); opacity: 1; } to { transform: translateY(-26px); opacity: 0; } }
@@ -281,7 +299,7 @@ button.link { min-height: 0; padding: 0; border: 0; background: none; color: var
 .cal-day.today { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 @media (prefers-reduced-motion: reduce) {
-  .result-chip, .result-chip.comeback, .card.flash-ok, .card.flash-bad, .stage-body, .points-float, .toast { animation: none; }
+  .result-chip, .result-chip.comeback, .card.flash-ok, .card.flash-bad, .stage-body, .points-float, .toast, .xp-btn.nudge { animation: none; }
   .points-float { display: none; }
 }
 

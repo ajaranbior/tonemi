@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { topConfusions } from '../ear/adapt'
-import { addDays, DAILY_GOAL, dailyStreak, dayKey, pointsFor, POINTS, sinceMonday } from '../ear/game'
+import { addDays, DAILY_GOAL, dailyStreak, dayKey, GREEN, GREEN_MIN_TRIES, pointsFor, POINTS, sinceMonday } from '../ear/game'
 import { navigate, useRoute } from '../route'
 import { addEarGame, getEarCombos, getEarConfusions, getEarGame, getPref, resetEar, setPref } from '../store'
 import { EarBank, type AnswerExtra } from './EarBank'
@@ -28,6 +28,8 @@ export function EarPage() {
   /** Latest points gained, keyed so the float animation restarts. */
   const [gain, setGain] = useState<{ n: number; pts: number; comeback: boolean } | null>(null)
   const [toast, setToast] = useState<{ n: number; text: string } | null>(null)
+  /** Pattern that just turned green; keyed so the score's nudge animation restarts. */
+  const [milestone, setMilestone] = useState<{ n: number; combo: string } | null>(null)
   const toastTimer = useRef<number | undefined>(undefined)
 
   const showToast = useCallback((text: string) => {
@@ -51,7 +53,10 @@ export function EarPage() {
       if (!game) return
       setGain((g) => ({ n: (g?.n ?? 0) + 1, pts, comeback: extra.comeback }))
       if (before + 1 === DAILY_GOAL) showToast(`🔥 Daily goal reached · ${dailyStreak(getEarGame().days, today)}-day streak`)
-      else if (extra.milestone) showToast(`🎉 ${extra.milestone} is green now`)
+      else if (extra.milestone) {
+        showToast(`🎉 ${extra.milestone} is green now · hover ★ for all patterns`)
+        setMilestone((m) => ({ n: (m?.n ?? 0) + 1, combo: extra.milestone!.replaceAll('-', '') }))
+      }
       else if (correct && nextCombo > 0 && nextCombo % 10 === 0) showToast(`⚡ ${nextCombo} in a row!`)
     },
     [combo, game, showToast],
@@ -76,7 +81,7 @@ export function EarPage() {
 
   return (
     <div className="page">
-      {game && <GameBar tick={tick} combo={combo} gain={gain} />}
+      {game && <GameBar tick={tick} combo={combo} gain={gain} milestone={milestone} />}
 
       {mode === 'words' ? (
         <EarBank onAnswered={answered} onOverride={overridden} game={game} onGame={toggleGame} />
@@ -113,8 +118,19 @@ export function EarPage() {
 }
 
 /** One fixed-height strip: daily streak, today's goal, combo and points. */
-function GameBar({ tick, combo, gain }: { tick: number; combo: number; gain: { n: number; pts: number; comeback: boolean } | null }) {
+function GameBar({
+  tick,
+  combo,
+  gain,
+  milestone,
+}: {
+  tick: number
+  combo: number
+  gain: { n: number; pts: number; comeback: boolean } | null
+  milestone: { n: number; combo: string } | null
+}) {
   void tick // re-read the store after every answer
+  const [open, setOpen] = useState(false)
   const g = getEarGame()
   const today = dayKey()
   const done = g.days[today] ?? 0
@@ -132,14 +148,56 @@ function GameBar({ tick, combo, gain }: { tick: number; combo: number; gain: { n
       <span className={`game-stat ${combo >= 3 ? 'lit' : ''}`} title={`Right answers in a row (best ${g.bestCombo})`}>
         ⚡ <strong>{combo}</strong>
       </span>
-      <span className="game-stat game-xp" title="Points: +2 for any answer, +10 right, +25 right on a word you missed before">
-        ★ <strong>{g.xp.toLocaleString()}</strong>
+      <span className={`game-stat game-xp ${open ? 'open' : ''}`} onMouseLeave={() => setOpen(false)}>
+        <button
+          key={milestone?.n ?? 0}
+          className={`xp-btn ${milestone ? 'nudge' : ''}`}
+          aria-expanded={open}
+          aria-label={`${g.xp} points. Show tone pattern progress`}
+          onClick={() => setOpen((o) => !o)}
+          onBlur={() => setOpen(false)}
+        >
+          ★ <strong>{g.xp.toLocaleString()}</strong>
+        </button>
         {gain && (
           <span key={gain.n} className={`points-float ${gain.comeback ? 'comeback' : ''}`} aria-hidden="true">
             +{gain.pts}
           </span>
         )}
+        <PatternPopover fresh={milestone?.combo} />
       </span>
+    </div>
+  )
+}
+
+/** Compact per-pattern progress shown from the score: which tone patterns are green so far. */
+function PatternPopover({ fresh }: { fresh?: string }) {
+  const all = Object.entries(getEarCombos())
+    .filter(([, s]) => s.n >= 2)
+    .sort(([a], [b]) => a.length - b.length || a.localeCompare(b))
+  const isGreen = (s: { n: number; ema: number }) => s.n >= GREEN_MIN_TRIES && s.ema >= GREEN
+  const green = all.filter(([, s]) => isGreen(s)).length
+  return (
+    <div className="xp-pop" role="tooltip">
+      <p className="xp-pop-head">
+        <strong>Tone patterns</strong>
+        <span className="muted small">{all.length ? `${green} of ${all.length} green` : 'none yet'}</span>
+      </p>
+      <p className="muted small">Points: +2 any answer, +10 right, +25 right on a word you missed before.</p>
+      {all.length > 0 && (
+        <ul className="xp-pop-grid">
+          {all.map(([combo, s]) => {
+            const pct = Math.round(s.ema * 100)
+            return (
+              <li key={combo} className={`xp-chip ${isGreen(s) ? 'green' : ''} ${combo === fresh ? 'fresh' : ''}`} title={`${s.n} tries`}>
+                <span className="small">{[...combo].join('-')}</span>
+                <strong style={{ color: gradeColor(pct) }}>{pct}%</strong>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+      <p className="muted small">Green = {Math.round(GREEN * 100)}%+ after {GREEN_MIN_TRIES} tries. Details under Progress.</p>
     </div>
   )
 }

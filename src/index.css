@@ -244,7 +244,11 @@ button.link { min-height: 0; padding: 0; border: 0; background: none; color: var
 .stage-play:disabled { opacity: 0.85; }
 .stage-preview { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 4px; }
 .preview-head { flex: none; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.preview-word { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.preview-word { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.preview-mode { flex: none; }
+.preview-mode button { flex: none; }
+/* With the source switcher in the head, the chart labels carry the pinyin. */
+.preview-mode ~ .preview-word .pinyin { display: none; }
 .preview-btns { display: flex; gap: 6px; flex: none; }
 .preview-btns button { min-height: 36px; min-width: 44px; padding: 4px 10px; }
 

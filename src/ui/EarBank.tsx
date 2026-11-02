@@ -13,6 +13,7 @@ import { PitchPlot, type PlotLine } from './PitchPlot'
 import { answerOverlay } from './earPlot'
 import { marked } from './tone'
 import { EarStage, ResultChip } from './EarStage'
+import type { PreviewVoice } from './AnswerPreview'
 import { SandhiNote, ToneAnswer } from './ToneAnswer'
 import { turnedGreen } from '../ear/game'
 import { useReview } from './useReview'
@@ -238,6 +239,14 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
 
   const refRange: SpeakerRange | null = manifest && shown ? manifest.speakers[shown.speaker].range : null
   const complete = chosen.length > 0 && chosen.every((c) => c !== null)
+  // The asked recording, for "your answer in the same voice".
+  const voice = useMemo<PreviewVoice | undefined>(
+    () =>
+      shown && refRange
+        ? { url: audioUrl(shown), hop: shown.ref.hop, t0: shown.ref.t0, st: shown.ref.st, segments: shown.ref.segments, range: refRange, expected: shown.surface }
+        : undefined,
+    [shown, refRange],
+  )
   const g = useMemo(() => (shown && shownAnswered ? grade(shown.surface, shownChosen) : null), [shown, shownAnswered, shownChosen])
 
   if (error)
@@ -285,7 +294,7 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
           cursor={cursor}
           playing={playing}
           onPlay={() => void listen()}
-          preview={g && !g.all && !ok ? { chosen: shownChosen as Tone[], exclude: shown.id, syllables: shown.syllables } : null}
+          preview={g && !g.all && !ok ? { chosen: shownChosen as Tone[], exclude: shown.id, syllables: shown.syllables, voice } : null}
         />
 
         <div className="controls ear-controls">

@@ -1,6 +1,6 @@
 import { pinyin as toPinyin } from 'pinyin-pro'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { chaoTrack, rangeFromSemitones } from '../analysis/normalize'
+import { chaoTrack, rangeFromSemitones, type SpeakerRange } from '../analysis/normalize'
 import { hzToSt, type PitchTrack } from '../analysis/pitch'
 import { segmentSyllables, type Segment } from '../analysis/segment'
 import type { Tone } from '../analysis/tones'
@@ -20,6 +20,7 @@ import { LoopLength } from './LoopLength'
 import { PitchPlot, type PlotLine } from './PitchPlot'
 import { answerOverlay } from './earPlot'
 import { EarStage, ResultChip } from './EarStage'
+import type { PreviewVoice } from './AnswerPreview'
 import { SandhiNote, ToneAnswer } from './ToneAnswer'
 import type { EarProps } from './EarBank'
 import { turnedGreen } from '../ear/game'
@@ -348,6 +349,12 @@ export default function EarClips({ onAnswered, onOverride, game, onGame }: EarPr
   const g = sClip && sAnswered ? grade(sClip.tones, sChosen) : null
   const ok = rv ? !!rv.accepted : accepted
   const sSpan = sClip ? span(sClip) : null
+  const s0 = sSpan?.[0]
+  const s1 = sSpan?.[1]
+  const sVoice = useMemo(
+    () => (sClip && ready && s0 !== undefined && s1 !== undefined ? clipVoice(sClip, [s0, s1], ready, samples) : undefined),
+    [sClip, s0, s1, ready, samples],
+  )
 
   return (
     <>
@@ -408,7 +415,7 @@ export default function EarClips({ onAnswered, onOverride, game, onGame }: EarPr
               cursor={cursor !== undefined && sSpan ? cursor - sSpan[0] : undefined}
               playing={playing}
               onPlay={() => void play(sClip)}
-              preview={g && !g.all && !ok ? { chosen: sChosen as Tone[], syllables: sClip.syllables } : null}
+              preview={g && !g.all && !ok ? { chosen: sChosen as Tone[], syllables: sClip.syllables, voice: sVoice } : null}
             />
 
             <div className="controls ear-controls">
@@ -476,30 +483,53 @@ export default function EarClips({ onAnswered, onOverride, game, onGame }: EarPr
 
 const byIdHas = (clips: Clip[], c: Clip) => clips.some((x) => x.id === c.id)
 
+/** Frames to chart for a clip (with some context) and its syllable segments, or null if too short. */
+function clipView(span: [number, number] | null, track: PitchTrack, n: number): { from: number; to: number; segments: Segment[] } | null {
+  if (!span) return null
+  const hop = track.hop
+  const len = track.hz.length
+  const a = Math.max(0, Math.floor((span[0] + PAD_BEFORE - 0.032) / hop))
+  const b = Math.min(len, Math.ceil((span[1] - PAD_AFTER - 0.032) / hop))
+  if (b - a < 6) return null
+  const from = Math.max(0, a - 10)
+  const to = Math.min(len, b + 10)
+  const slice: PitchTrack = {
+    hop,
+    hz: track.hz.subarray(a, b),
+    rms: track.rms.subarray(a, b),
+    zcr: track.zcr.subarray(a, b),
+    creak: track.creak.subarray(a, b),
+  }
+  const seg = segmentSyllables(slice, n)
+  const segments: Segment[] = seg
+    ? seg.segments.map(([s, e]) => [s + a, e + a])
+    : Array.from({ length: n }, (_, i) => [Math.round(a + ((b - a) * i) / n), Math.round(a + ((b - a) * (i + 1)) / n)] as Segment)
+  return { from, to, segments }
+}
+
+/** The clip's own audio and pitch, so the preview can re-pitch it to the learner's answer. */
+function clipVoice(clip: Clip, span: [number, number] | null, ready: { track: PitchTrack; range: SpeakerRange }, samples: Float32Array | null): PreviewVoice | undefined {
+  const view = clipView(span, ready.track, clip.tones.length)
+  if (!view || !span || !samples) return undefined
+  const { from, to, segments } = view
+  const hop = ready.track.hop
+  return {
+    samples,
+    hop,
+    t0: from * hop,
+    st: Array.from(ready.track.hz.subarray(from, to), (hz) => (Number.isNaN(hz) ? NaN : hzToSt(hz))),
+    segments: segments.map(([s, e]) => [s - from, e - from] as Segment),
+    range: ready.range,
+    from: span[0],
+    to: span[1],
+    expected: clip.tones,
+  }
+}
+
 function ClipChart({ clip, chosen, ready, span, cursor, samples }: { clip: Clip; chosen: (Tone | null)[]; ready: { track: PitchTrack; chao: Float32Array }; span: [number, number] | null; cursor?: number; samples: Float32Array | null }) {
   const { track, chao } = ready
   const hop = track.hop
-  const view = useMemo(() => {
-    if (!span) return null
-    const a = Math.max(0, Math.floor((span[0] + PAD_BEFORE - 0.032) / hop))
-    const b = Math.min(chao.length, Math.ceil((span[1] - PAD_AFTER - 0.032) / hop))
-    if (b - a < 6) return null
-    const from = Math.max(0, a - 10)
-    const to = Math.min(chao.length, b + 10)
-    const slice: PitchTrack = {
-      hop,
-      hz: track.hz.subarray(a, b),
-      rms: track.rms.subarray(a, b),
-      zcr: track.zcr.subarray(a, b),
-      creak: track.creak.subarray(a, b),
-    }
-    const n = clip.tones.length
-    const seg = segmentSyllables(slice, n)
-    const segments: Segment[] = seg
-      ? seg.segments.map(([s, e]) => [s + a, e + a])
-      : Array.from({ length: n }, (_, i) => [Math.round(a + ((b - a) * i) / n), Math.round(a + ((b - a) * (i + 1)) / n)] as Segment)
-    return { from, to, segments }
-  }, [span, track, chao, hop, clip.tones.length])
+  const view = useMemo(() => clipView(span, track, clip.tones.length), [span, track, clip.tones.length])
 
   if (!view) return <p className="muted small">Not enough voiced speech in this clip to draw a chart.</p>
   const { from, to, segments } = view

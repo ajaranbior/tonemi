@@ -1,6 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { SR } from '../analysis/pitch'
+import { stToChao } from '../analysis/normalize'
 import type { Tone } from '../analysis/tones'
 import { playUrl, stopPlayback, wavUrl } from '../audio/playback'
+import { FRAME_CENTER, retone, targetContour, type Voice } from '../audio/retone'
 import { synthTones } from '../audio/synth'
 import { audioUrl, loadManifest, refChao } from '../bank/load'
 import type { BankItem, Manifest } from '../bank/types'
@@ -10,6 +13,15 @@ import { marked } from './tone'
 
 const same = (a: Tone[], b: Tone[]) => a.length === b.length && a.every((t, i) => t === b[i])
 
+/** The asked recording, so it can be re-pitched to the learner's answer. */
+export interface PreviewVoice extends Omit<Voice, 'samples'> {
+  /** 16 kHz samples, or a URL to fetch them from. */
+  samples?: Float32Array | null
+  url?: string
+  /** The tones actually spoken. */
+  expected: Tone[]
+}
+
 interface Props {
   /** The tones the learner picked. */
   chosen: Tone[]
@@ -17,15 +29,122 @@ interface Props {
   exclude?: string
   /** Toneless syllables of the word that was asked; recordings sharing them are preferred. */
   syllables?: string[]
+  voice?: PreviewVoice
 }
 
 const plain = (s: string) => s.toLowerCase().replace(/ü/g, 'v')
 
+type Mode = 'same' | 'other'
+
 /**
- * "If it were 2-3, it would sound like this": a real recording with that tone pattern, else a
- * synthesized hum. Laid out to fill the ear stage; plays once when opened.
+ * "If it were 2-3, it would sound like this". Two ways to hear it: the very recording that was asked,
+ * re-pitched to the tones picked (same voice, same word), or a real recording of another word with
+ * that tone pattern (else a synthesized hum). Laid out to fill the ear stage; plays once when opened.
  */
-export function AnswerPreview({ chosen, exclude, syllables }: Props) {
+export function AnswerPreview({ chosen, exclude, syllables, voice }: Props) {
+  const [mode, setMode] = useState<Mode>(voice ? 'same' : 'other')
+  useEffect(() => () => stopPlayback(), [])
+  const switcher = voice ? (
+    <div className="segmented compact preview-mode" role="tablist" aria-label="Preview source">
+      {(
+        [
+          ['same', 'Same voice'],
+          ['other', 'Other word'],
+        ] as const
+      ).map(([m, label]) => (
+        <button key={m} role="tab" aria-selected={mode === m} className={mode === m ? 'active' : ''} onClick={() => { stopPlayback(); setMode(m) }}>
+          {label}
+        </button>
+      ))}
+    </div>
+  ) : null
+  return mode === 'same' && voice ? (
+    <SameVoice chosen={chosen} syllables={syllables} voice={voice} switcher={switcher} />
+  ) : (
+    <OtherWord chosen={chosen} exclude={exclude} syllables={syllables} switcher={switcher} />
+  )
+}
+
+/** The asked recording itself, its pitch moved to the chosen tones (TD-PSOLA). */
+function SameVoice({ chosen, syllables, voice, switcher }: { chosen: Tone[]; syllables?: string[]; voice: PreviewVoice; switcher: ReactNode }) {
+  const fetched = useSamples(voice.samples ? null : (voice.url ?? null))
+  const samples = voice.samples ?? fetched
+  const [cursor, setCursor] = useState<number | undefined>()
+  const [playing, setPlaying] = useState(false)
+  const latest = useRef(0)
+
+  const audio = useMemo(() => (samples ? retone({ ...voice, samples }, voice.expected, chosen) : null), [samples, voice, chosen])
+  const url = useMemo(() => (audio && audio.length ? wavUrl(audio) : null), [audio])
+  useEffect(() => () => { if (url) URL.revokeObjectURL(url) }, [url])
+
+  const play = useCallback(
+    async (rate = 1) => {
+      if (!url) return
+      const mine = ++latest.current
+      setPlaying(true)
+      try {
+        await playUrl(url, rate, (t) => setCursor(Number.isNaN(t) ? undefined : t))
+      } catch {
+        // ignore: nothing useful to show for a failed preview
+      }
+      if (mine === latest.current) setPlaying(false)
+    },
+    [url],
+  )
+  const autoplayed = useRef(false)
+  useEffect(() => {
+    if (url && !autoplayed.current) {
+      autoplayed.current = true
+      void play()
+    }
+  }, [url, play])
+
+  // Chart: what was said (blue) and the melody it was moved to (red), in the rendered clip's time.
+  const chart = useMemo(() => {
+    const { hop, range } = voice
+    const from = voice.from ?? voice.t0
+    const at = (f: number) => voice.t0 + FRAME_CENTER + f * hop - from
+    const t = Array.from(voice.st, (_, f) => at(f))
+    const orig = Float32Array.from(voice.st, (s) => (s === null || Number.isNaN(s) ? NaN : stToChao(s, range)))
+    const goal = Float32Array.from(targetContour(voice, voice.expected, chosen), (s) => (Number.isNaN(s) ? NaN : stToChao(s, range)))
+    const lines: PlotLine[] = [
+      { t, v: orig, kind: 'ref' },
+      { t, v: goal, kind: 'wrong' },
+    ]
+    const pinyin = syllables && syllables.length === chosen.length ? marked(syllables, chosen) : null
+    const labels: PlotLabel[] = voice.segments.map(([s, e], i) => ({ t: at((s + e) / 2), text: pinyin?.[i] ?? String(chosen[i]), tone: chosen[i] }))
+    const boundaries = voice.segments.slice(1).map(([s]) => at(s))
+    return { lines, labels, boundaries }
+  }, [voice, chosen, syllables])
+
+  const label = chosen.join('-')
+  const duration = audio ? audio.length / SR : 1
+  return (
+    <div className="stage-preview">
+      <div className="preview-head">
+        {switcher}
+        <span className="preview-btns">
+          <button className="primary" onClick={() => play(1)} disabled={playing || !url} aria-label={`Play this word as ${label}`}>▶</button>
+          <button onClick={() => play(0.6)} disabled={playing || !url} aria-label="Play slowly" title="Slow">🐢</button>
+        </span>
+      </div>
+      <div className="stage-plot">
+        {samples && !url ? (
+          <p className="muted small">Not enough voiced speech here to change the tones.</p>
+        ) : (
+          <PitchPlot lines={chart.lines} duration={duration} labels={chart.labels} boundaries={chart.boundaries} cursor={cursor} height="100%" scrub={{ samples: audio, offset: 0 }} />
+        )}
+      </div>
+      <div className="legend">
+        <span className="key ref" /> what was said <span className="key wrong" /> moved to your tones ({label})
+        <span className="legend-hint">Same voice, pitch changed by the app: a guide, not a native recording</span>
+      </div>
+    </div>
+  )
+}
+
+/** A real recording of another word with the chosen tones, else a synthesized hum. */
+function OtherWord({ chosen, exclude, syllables, switcher }: { chosen: Tone[]; exclude?: string; syllables?: string[]; switcher: ReactNode }) {
   const [manifest, setManifest] = useState<Manifest | null>(null)
   const [round, setRound] = useState(0)
   const [cursor, setCursor] = useState<number | undefined>()
@@ -34,7 +153,6 @@ export function AnswerPreview({ chosen, exclude, syllables }: Props) {
 
   useEffect(() => {
     loadManifest().then(setManifest, () => {})
-    return () => stopPlayback()
   }, [])
 
   // Recordings with the chosen tones, those sharing the most syllables with the asked word first.
@@ -88,6 +206,7 @@ export function AnswerPreview({ chosen, exclude, syllables }: Props) {
   return (
     <div className="stage-preview">
       <div className="preview-head">
+        {switcher}
         {item ? (
           <span className="preview-word">
             <span className="hanzi-sm">{item.hanzi}</span>{' '}

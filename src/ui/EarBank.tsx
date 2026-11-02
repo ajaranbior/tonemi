@@ -199,7 +199,7 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
   }, [rv, review, next, kind, item])
 
   // Keyboard: digits fill the next empty syllable, Enter checks/continues, Space or R replays,
-  // ← goes back to the previous word, → forward / next.
+  // ← or Q goes back to the previous word, → or E forward / next.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || !item) return
@@ -207,10 +207,10 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
         e.preventDefault()
         if (shownAnswered) advance()
         else if (!autoReveal) check()
-      } else if (e.key === 'ArrowLeft') {
+      } else if (e.key === 'ArrowLeft' || e.key === 'q' || e.key === 'Q') {
         e.preventDefault()
         review.back()
-      } else if (e.key === 'ArrowRight') {
+      } else if (e.key === 'ArrowRight' || e.key === 'e' || e.key === 'E') {
         e.preventDefault()
         if (shownAnswered) advance()
       } else if (e.key === 'Backspace') {

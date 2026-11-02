@@ -307,7 +307,7 @@ export default function EarClips({ onAnswered, onOverride, game, onGame }: EarPr
   }, [rv, review, next, clip])
 
   // Keys: digits fill the next empty syllable, Enter checks/continues, Space or R replays,
-  // ← goes back to the previous clip, → forward / next.
+  // ← or Q goes back to the previous clip, → or E forward / next.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || !clip) return
@@ -315,10 +315,10 @@ export default function EarClips({ onAnswered, onOverride, game, onGame }: EarPr
         e.preventDefault()
         if (sAnswered) advance()
         else if (!autoReveal) check()
-      } else if (e.key === 'ArrowLeft') {
+      } else if (e.key === 'ArrowLeft' || e.key === 'q' || e.key === 'Q') {
         e.preventDefault()
         review.back()
-      } else if (e.key === 'ArrowRight') {
+      } else if (e.key === 'ArrowRight' || e.key === 'e' || e.key === 'E') {
         e.preventDefault()
         if (sAnswered) advance()
       } else if (e.key === 'Backspace') {

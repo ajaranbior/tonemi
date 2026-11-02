@@ -141,6 +141,7 @@ button.link { min-height: 0; padding: 0; border: 0; background: none; color: var
 .t1 { color: var(--t1); } .t2 { color: var(--t2); } .t3 { color: var(--t3); } .t4 { color: var(--t4); } .t0 { color: var(--t0); }
 
 .pitch-plot { width: 100%; display: block; border-radius: 10px; touch-action: pan-y; }
+.pitch-plot.scrubbable { cursor: ew-resize; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .legend { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--muted); margin-top: 6px; flex-wrap: wrap; }
 .key { display: inline-block; width: 18px; height: 4px; border-radius: 2px; }
 .key.ref { background: var(--ref); opacity: 0.6; height: 6px; }

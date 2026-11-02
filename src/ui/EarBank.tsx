@@ -15,6 +15,7 @@ import { EarStage, ResultChip } from './EarStage'
 import { SandhiNote, ToneAnswer } from './ToneAnswer'
 import { turnedGreen } from '../ear/game'
 import { useReview } from './useReview'
+import { useSamples } from './useSamples'
 import { FEEDBACK_SECONDS, playFeedback } from '../audio/sfx'
 
 type Kind = ItemKind | 'mix'
@@ -339,10 +340,11 @@ function ReferenceChart({ item, range, chosen, pinyin, cursor }: { item: BankIte
     [item, chosen, pinyin, hop, chao],
   )
   const lines = useMemo<PlotLine[]>(() => [{ t: Array.from(chao, (_, i) => i * hop), v: chao, kind: 'ref' as const }, ...(guess ? [guess] : [])], [chao, hop, guess])
+  const samples = useSamples(audioUrl(item))
   return (
     <>
       <div className="stage-plot">
-        <PitchPlot lines={lines} duration={chao.length * hop} labels={labels} boundaries={boundaries} cursor={cursor} height="100%" />
+        <PitchPlot lines={lines} duration={chao.length * hop} labels={labels} boundaries={boundaries} cursor={cursor} height="100%" scrub={{ samples, offset: item.ref.t0 }} />
       </div>
       <div className="legend">
         <span className="key ref" /> the speaker's pitch
@@ -351,7 +353,7 @@ function ReferenceChart({ item, range, chosen, pinyin, cursor }: { item: BankIte
             <span className="key wrong" /> the tone you picked
           </>
         )}
-        <span className="legend-hint">Space replays</span>
+        <span className="legend-hint">Space replays · hold & drag on the chart to loop a spot</span>
       </div>
     </>
   )

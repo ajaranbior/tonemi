@@ -13,6 +13,7 @@ import { comboScores } from './progress'
 import { micError } from './errors'
 import { Toggle } from './Toggle'
 import { PitchPlot, type PlotLabel, type PlotLine } from './PitchPlot'
+import { useSamples } from './useSamples'
 import { marked, scoreClass, toneName } from './tone'
 
 type Phase = 'idle' | 'listening' | 'recording'
@@ -41,6 +42,7 @@ export function DrillPage({ range, calibrated, onCalibrate }: Props) {
   const [phase, setPhase] = useState<Phase>('idle')
   const [attempt, setAttempt] = useState<Attempt | null>(null)
   const [live, setLive] = useState<{ t: number[]; v: number[] } | null>(null)
+  const refSamples = useSamples(item ? audioUrl(item) : null)
   const [showPinyin, setShowPinyin] = useState(() => getPref<boolean>('drill.pinyin', true))
   const [autoRecord, setAutoRecord] = useState(() => getPref<boolean>('drill.autoRecord', true))
   const [smoothOnly, setSmoothOnly] = useState(() => getPref<boolean>('drill.smooth', false))
@@ -179,7 +181,7 @@ export function DrillPage({ range, calibrated, onCalibrate }: Props) {
   } else if (attempt) {
     plot = <PitchPlot lines={attempt.lines} duration={attempt.duration} labels={attempt.labels} boundaries={attempt.boundaries} />
   } else {
-    plot = <PitchPlot lines={[refLine]} duration={refDuration} labels={preLabels} boundaries={item.ref.segments.slice(1).map((s) => s[0] * item.ref.hop)} />
+    plot = <PitchPlot lines={[refLine]} duration={refDuration} labels={preLabels} boundaries={item.ref.segments.slice(1).map((s) => s[0] * item.ref.hop)} scrub={{ samples: refSamples, offset: item.ref.t0 }} />
   }
 
   return (

@@ -52,6 +52,7 @@ export default function EarClips({ onAnswered, onOverride, game, onGame }: EarPr
   const [cues, setCues] = useState<Cue[]>([])
   const [subName, setSubName] = useState<string | null>(null)
   const [native, setNative] = useState<PitchTrack | null>(null)
+  const [samples, setSamples] = useState<Float32Array | null>(null)
   const [status, setStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [words, setWords] = useState(() => getPref<string>('ear.words', '2'))
@@ -95,6 +96,7 @@ export default function EarClips({ onAnswered, onOverride, game, onGame }: EarPr
 
   const loadMedia = async (file: File) => {
     setNative(null)
+    setSamples(null)
     setClip(null)
     stopSpan(mediaEl.current)
     if (media) URL.revokeObjectURL(media.url)
@@ -102,6 +104,7 @@ export default function EarClips({ onAnswered, onOverride, game, onGame }: EarPr
     try {
       setStatus('Decoding audio…')
       const samples = await decodeTo16k(audioContext(), await file.arrayBuffer())
+      setSamples(samples)
       setStatus('Analysing pitch…')
       setNative(await trackInWorker(samples))
       setStatus(null)
@@ -398,7 +401,7 @@ export default function EarClips({ onAnswered, onOverride, game, onGame }: EarPr
             <EarStage
               key={sClip.id + String(review.index)}
               answered={sAnswered && !!g}
-              chart={g && <ClipChart clip={sClip} chosen={sChosen} ready={ready} span={sSpan} cursor={cursor} />}
+              chart={g && <ClipChart clip={sClip} chosen={sChosen} ready={ready} span={sSpan} cursor={cursor} samples={samples} />}
               slots={sClip.tones.length}
               duration={sSpan ? sSpan[1] - sSpan[0] : 1}
               cursor={cursor !== undefined && sSpan ? cursor - sSpan[0] : undefined}
@@ -471,7 +474,7 @@ export default function EarClips({ onAnswered, onOverride, game, onGame }: EarPr
 
 const byIdHas = (clips: Clip[], c: Clip) => clips.some((x) => x.id === c.id)
 
-function ClipChart({ clip, chosen, ready, span, cursor }: { clip: Clip; chosen: (Tone | null)[]; ready: { track: PitchTrack; chao: Float32Array }; span: [number, number] | null; cursor?: number }) {
+function ClipChart({ clip, chosen, ready, span, cursor, samples }: { clip: Clip; chosen: (Tone | null)[]; ready: { track: PitchTrack; chao: Float32Array }; span: [number, number] | null; cursor?: number; samples: Float32Array | null }) {
   const { track, chao } = ready
   const hop = track.hop
   const view = useMemo(() => {
@@ -507,7 +510,7 @@ function ClipChart({ clip, chosen, ready, span, cursor }: { clip: Clip; chosen: 
   return (
     <>
       <div className="stage-plot">
-        <PitchPlot lines={lines} duration={(to - from) * hop} labels={labels} boundaries={boundaries} cursor={playhead} height="100%" />
+        <PitchPlot lines={lines} duration={(to - from) * hop} labels={labels} boundaries={boundaries} cursor={playhead} height="100%" scrub={{ samples, offset: from * hop + 0.032 }} />
       </div>
       <div className="legend">
         <span className="key ref" /> speaker
@@ -516,7 +519,7 @@ function ClipChart({ clip, chosen, ready, span, cursor }: { clip: Clip; chosen: 
             <span className="key wrong" /> the tone you picked
           </>
         )}
-        <span className="legend-hint">Space replays</span>
+        <span className="legend-hint">Space replays · hold & drag on the chart to loop a spot</span>
       </div>
     </>
   )

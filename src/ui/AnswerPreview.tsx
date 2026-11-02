@@ -5,6 +5,7 @@ import { synthTones } from '../audio/synth'
 import { audioUrl, loadManifest, refChao } from '../bank/load'
 import type { BankItem, Manifest } from '../bank/types'
 import { PitchPlot, type PlotLabel, type PlotLine } from './PitchPlot'
+import { useSamples } from './useSamples'
 import { marked } from './tone'
 
 const same = (a: Tone[], b: Tone[]) => a.length === b.length && a.every((t, i) => t === b[i])
@@ -133,5 +134,6 @@ function PreviewChart({ item, range, cursor }: { item: BankItem; range: { lo: nu
   )
   const boundaries = useMemo(() => item.ref.segments.slice(1).map((s) => s[0] * hop), [item, hop])
   const lines = useMemo<PlotLine[]>(() => [{ t: Array.from(chao, (_, i) => i * hop), v: chao, kind: 'wrong' }], [chao, hop])
-  return <PitchPlot lines={lines} duration={chao.length * hop} labels={labels} boundaries={boundaries} cursor={cursor} height="100%" />
+  const samples = useSamples(audioUrl(item))
+  return <PitchPlot lines={lines} duration={chao.length * hop} labels={labels} boundaries={boundaries} cursor={cursor} height="100%" scrub={{ samples, offset: item.ref.t0 }} />
 }

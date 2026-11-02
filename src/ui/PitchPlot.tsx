@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent } from 'react'
+import { Scrubber } from '../audio/scrub'
 import { GLYPH_POINTS } from './toneShapes'
 
 export interface PlotLine {
@@ -34,30 +35,100 @@ interface Props {
   cursor?: number
   /** Pixels, or any CSS height such as '100%'. */
   height?: number | string
+  /**
+   * The recording behind the chart: hold and drag on the plot to loop the sound at that point.
+   * Plot time t is `offset + t` seconds into `samples` (16 kHz). Null while it loads.
+   */
+  scrub?: { samples: Float32Array | null; offset: number }
+}
+
+interface Probe {
+  t: number
+  held: boolean
 }
 
 const Y_MIN = 0.3
 const Y_MAX = 5.7
 
 /** Chao-scale pitch plot (1 = bottom of your range, 5 = top). */
-export function PitchPlot({ lines, duration, boundaries = [], labels = [], cursor, height = 220 }: Props) {
+export function PitchPlot({ lines, duration, boundaries = [], labels = [], cursor, height = 220, scrub }: Props) {
   const canvas = useRef<HTMLCanvasElement>(null)
   const size = useRef({ w: 0, h: 0 })
+  const [probe, setProbe] = useState<Probe | null>(null)
+  type Scene = Parameters<typeof paint>[2]
+  const scene = useRef<Scene | null>(null)
 
   useEffect(() => {
     const el = canvas.current!
-    const draw = () => paint(el, size.current, { lines, duration, boundaries, labels, cursor })
     const ro = new ResizeObserver(([entry]) => {
       size.current = { w: entry.contentRect.width, h: entry.contentRect.height }
-      draw()
+      if (scene.current) paint(el, size.current, scene.current)
     })
     ro.observe(el)
-    draw()
     return () => ro.disconnect()
-  }, [lines, duration, boundaries, labels, cursor])
+  }, [])
+  useEffect(() => {
+    scene.current = { lines, duration, boundaries, labels, cursor, probe }
+    paint(canvas.current!, size.current, scene.current)
+  }, [lines, duration, boundaries, labels, cursor, probe])
 
-  return <canvas ref={canvas} className="pitch-plot" style={{ height }} role="img" aria-label="Pitch contour" />
+  const samples = scrub?.samples ?? null
+  const scrubber = useMemo(() => (samples ? new Scrubber(samples) : null), [samples])
+  useEffect(() => () => scrubber?.stop(), [scrubber])
+
+  const at = (e: PointerEvent<HTMLCanvasElement>) => {
+    const r = e.currentTarget.getBoundingClientRect()
+    const t = ((e.clientX - r.left - PLOT_LEFT) / Math.max(1, r.width - PLOT_LEFT - PLOT_RIGHT)) * Math.max(duration, 0.1)
+    return Math.max(0, Math.min(duration, t))
+  }
+  const hear = (t: number) => scrubber?.set(scrub!.offset + t)
+  const release = () => {
+    scrubber?.stop()
+    setProbe((p) => (p ? { ...p, held: false } : p))
+  }
+  const handlers = scrubber
+    ? {
+        onPointerDown: (e: PointerEvent<HTMLCanvasElement>) => {
+          if (e.button !== 0) return
+          e.currentTarget.setPointerCapture(e.pointerId)
+          const t = at(e)
+          setProbe({ t, held: true })
+          hear(t)
+        },
+        onPointerMove: (e: PointerEvent<HTMLCanvasElement>) => {
+          const held = e.currentTarget.hasPointerCapture(e.pointerId)
+          if (!held && e.pointerType !== 'mouse') return
+          const t = at(e)
+          setProbe({ t, held })
+          if (held) hear(t)
+        },
+        onPointerUp: release,
+        onPointerCancel: () => {
+          scrubber.stop()
+          setProbe(null)
+        },
+        onPointerLeave: (e: PointerEvent<HTMLCanvasElement>) => {
+          if (!e.currentTarget.hasPointerCapture(e.pointerId)) setProbe(null)
+        },
+        onContextMenu: (e: MouseEvent<HTMLCanvasElement>) => e.preventDefault(),
+      }
+    : {}
+
+  return (
+    <canvas
+      ref={canvas}
+      className={`pitch-plot${scrubber ? ' scrubbable' : ''}`}
+      style={{ height }}
+      role="img"
+      aria-label={scrubber ? 'Pitch contour. Hold and drag to loop the sound at that point.' : 'Pitch contour'}
+      title={scrubber ? 'Hold and drag to hear the pitch at that point' : undefined}
+      {...handlers}
+    />
+  )
 }
+
+const PLOT_LEFT = 22
+const PLOT_RIGHT = 6
 
 function css(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
@@ -66,7 +137,7 @@ function css(name: string): string {
 function paint(
   el: HTMLCanvasElement,
   { w, h }: { w: number; h: number },
-  { lines, duration, boundaries, labels, cursor }: Omit<Props, 'height'> & { boundaries: number[]; labels: PlotLabel[] },
+  { lines, duration, boundaries, labels, cursor, probe }: Omit<Props, 'height' | 'scrub'> & { boundaries: number[]; labels: PlotLabel[]; probe: Probe | null },
 ) {
   if (!w || !h) return
   const dpr = window.devicePixelRatio || 1
@@ -76,11 +147,11 @@ function paint(
   g.setTransform(dpr, 0, 0, dpr, 0, 0)
   g.clearRect(0, 0, w, h)
 
-  const left = 22
+  const left = PLOT_LEFT
   const top = labels.some((l) => l.target !== undefined && l.ok === false) ? 86 : labels.length ? 52 : 6
   const bottom = 6
   const plotH = h - top - bottom
-  const x = (t: number) => left + (t / Math.max(duration, 0.1)) * (w - left - 6)
+  const x = (t: number) => left + (t / Math.max(duration, 0.1)) * (w - left - PLOT_RIGHT)
   const y = (v: number) => top + ((Y_MAX - v) / (Y_MAX - Y_MIN)) * plotH
 
   // Chao bands
@@ -149,6 +220,24 @@ function paint(
     g.moveTo(x(cursor), top)
     g.lineTo(x(cursor), h - bottom)
     g.stroke()
+  }
+
+  if (probe) {
+    // While held: shade the looped slice and mark the line; on hover just a faint guide.
+    if (probe.held) {
+      g.globalAlpha = 0.18
+      g.fillStyle = css('--accent')
+      g.fillRect(x(probe.t - 0.03), top, Math.max(2, x(0.06) - x(0)), h - top - bottom)
+      g.globalAlpha = 1
+    }
+    g.strokeStyle = probe.held ? css('--accent') : css('--muted')
+    g.lineWidth = probe.held ? 2 : 1
+    g.setLineDash(probe.held ? [] : [4, 3])
+    g.beginPath()
+    g.moveTo(x(probe.t), top)
+    g.lineTo(x(probe.t), h - bottom)
+    g.stroke()
+    g.setLineDash([])
   }
 
   g.textBaseline = 'alphabetic'

@@ -12,6 +12,7 @@ import { ComboPicker } from './ComboPicker'
 import { comboScores } from './progress'
 import { micError } from './errors'
 import { Toggle } from './Toggle'
+import { LoopLength } from './LoopLength'
 import { PitchPlot, type PlotLabel, type PlotLine } from './PitchPlot'
 import { useSamples } from './useSamples'
 import { marked, scoreClass, toneName } from './tone'
@@ -244,6 +245,7 @@ export function DrillPage({ range, calibrated, onCalibrate }: Props) {
         <Toggle label="Start recording after Listen" value={autoRecord} onChange={(v) => { setAutoRecord(v); setPref('drill.autoRecord', v) }} />
         <Toggle label="Smooth consonants only (m n l r w y)" value={smoothOnly} onChange={(v) => { setSmoothOnly(v); setPref('drill.smooth', v) }} />
         <Toggle label="Hum-back mode" value={hum} onChange={(v) => { setHum(v); setPref('drill.hum', v) }} />
+        <LoopLength />
       </details>
     </div>
   )

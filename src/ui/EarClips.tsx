@@ -16,6 +16,7 @@ import { overrule, type TrialRecord } from '../ear/overrule'
 import { addEarConfusion, getEarCombos, getPref, setEarCombo, setPref } from '../store'
 import { parseSubtitles, type Cue } from '../subtitles'
 import { Toggle } from './Toggle'
+import { LoopLength } from './LoopLength'
 import { PitchPlot, type PlotLine } from './PitchPlot'
 import { answerOverlay } from './earPlot'
 import { EarStage, ResultChip } from './EarStage'
@@ -464,6 +465,7 @@ export default function EarClips({ onAnswered, onOverride, game, onGame }: EarPr
             <Toggle label="Sound effects and vibration for right/wrong" value={sound} onChange={(v) => { setSound(v); setPref('ear.sound', v) }} />
             <Toggle label="Reveal the answer as soon as all tones are chosen" value={autoReveal} onChange={(v) => { setAutoReveal(v); setPref('ear.auto', v) }} />
             {media?.video && <Toggle label="Show video (may reveal burned-in subtitles)" value={showVideo} onChange={(v) => { setShowVideo(v); setPref('ear.video', v) }} />}
+            <LoopLength />
             <p className="muted small">Pitch range is estimated from the speech in the subtitled lines; background music or several speakers make the chart less accurate.</p>
           </details>
         </>

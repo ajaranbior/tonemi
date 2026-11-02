@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent } from 'react'
-import { Scrubber } from '../audio/scrub'
+import { getLoopMs, Scrubber } from '../audio/scrub'
 import { GLYPH_POINTS } from './toneShapes'
 
 export interface PlotLine {
@@ -227,7 +227,8 @@ function paint(
     if (probe.held) {
       g.globalAlpha = 0.18
       g.fillStyle = css('--accent')
-      g.fillRect(x(probe.t - 0.03), top, Math.max(2, x(0.06) - x(0)), h - top - bottom)
+      const half = getLoopMs() / 2000
+      g.fillRect(x(probe.t - half), top, Math.max(2, x(2 * half) - x(0)), h - top - bottom)
       g.globalAlpha = 1
     }
     g.strokeStyle = probe.held ? css('--accent') : css('--muted')

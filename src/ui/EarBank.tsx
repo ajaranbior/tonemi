@@ -8,6 +8,7 @@ import { clearRetry, dueRetry, grade, pickByCombo, scheduleRetry, updateStat, ty
 import { overrule, type TrialRecord } from '../ear/overrule'
 import { addEarConfusion, getEarCombos, getPref, setEarCombo, setPref } from '../store'
 import { Toggle } from './Toggle'
+import { LoopLength } from './LoopLength'
 import { PitchPlot, type PlotLine } from './PitchPlot'
 import { answerOverlay } from './earPlot'
 import { marked } from './tone'
@@ -327,6 +328,7 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
         <Toggle label="Sound effects and vibration for right/wrong" value={sound} onChange={(v) => { setSound(v); setPref('ear.sound', v) }} />
         <Toggle label="Reveal the answer as soon as all tones are chosen" value={autoReveal} onChange={(v) => { setAutoReveal(v); setPref('ear.auto', v) }} />
         <Toggle label="Show the character before answering" value={showHanzi} onChange={(v) => { setShowHanzi(v); setPref('ear.hanzi', v) }} />
+        <LoopLength />
       </details>
     </>
   )

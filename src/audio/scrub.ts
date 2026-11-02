@@ -2,9 +2,17 @@ import { SR } from '../analysis/pitch'
 import { audioContext } from './context'
 import { stopPlayback } from './playback'
 import { decodeTo16k } from './resample'
+import { getPref, setPref } from '../store'
 
-/** Target length of the looped grain (s). Rounded to whole pitch periods when the sound is voiced. */
-const GRAIN = 0.06
+/** Loop length choices (ms) and the default. Rounded to whole pitch periods when the sound is voiced. */
+export const LOOP_MS = { min: 10, max: 120, step: 5, default: 30 }
+
+/** The learner's loop length, ms. */
+export function getLoopMs(): number {
+  const ms = Number(getPref<string>('scrub.ms', String(LOOP_MS.default)))
+  return Number.isFinite(ms) ? Math.max(LOOP_MS.min, Math.min(LOOP_MS.max, ms)) : LOOP_MS.default
+}
+export const setLoopMs = (ms: number) => setPref('scrub.ms', String(ms))
 /** Crossfade at the loop seam (s). */
 const SEAM = 0.008
 /** Crossfade between grains while dragging (s). */
@@ -14,12 +22,12 @@ const SWAP = 0.02
  * One looped piece of audio [s, s + L) whose seam is crossfaded with what follows it, so the loop
  * is continuous. L is a whole number of pitch periods when a period is found, giving a steady tone.
  */
-export function loopGrain(samples: Float32Array, center: number, sr = SR): Float32Array | null {
+export function loopGrain(samples: Float32Array, center: number, grain = LOOP_MS.default / 1000, sr = SR): Float32Array | null {
   const c = Math.round(center * sr)
   const period = findPeriod(samples, c, sr)
-  const target = GRAIN * sr
+  const target = grain * sr
   const len = period ? Math.max(1, Math.round(target / period)) * period : Math.round(target)
-  const fade = Math.min(Math.round(SEAM * sr), Math.floor(len / 2))
+  const fade = Math.min(Math.round(SEAM * sr), Math.floor(len / 4))
   let s = Math.round(c - len / 2)
   s = Math.max(0, Math.min(s, samples.length - len - fade))
   if (s < 0) return null
@@ -87,6 +95,7 @@ interface Voice {
 export class Scrubber {
   private voice: Voice | null = null
   private at = NaN
+  private ms = NaN
   private samples: Float32Array
 
   constructor(samples: Float32Array) {
@@ -95,9 +104,11 @@ export class Scrubber {
 
   /** Start or move the loop to `t` seconds into the recording. */
   set(t: number) {
-    if (Math.abs(t - this.at) < 0.004) return
+    const ms = getLoopMs()
+    if (Math.abs(t - this.at) < 0.004 && ms === this.ms) return
     this.at = t
-    const grain = loopGrain(this.samples, t)
+    this.ms = ms
+    const grain = loopGrain(this.samples, t, ms / 1000)
     if (!grain) return
     const ctx = audioContext()
     if (!this.voice) stopPlayback()

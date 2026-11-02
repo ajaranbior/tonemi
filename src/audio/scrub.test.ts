@@ -6,7 +6,7 @@ const SR = 16000
 describe('loopGrain', () => {
   it('loops a whole number of pitch periods so the tone is seamless', () => {
     const x = Float32Array.from({ length: SR }, (_, i) => 0.3 * Math.sin((2 * Math.PI * 200 * i) / SR))
-    const g = loopGrain(x, 0.5)!
+    const g = loopGrain(x, 0.5, 0.06)!
     expect(g.length % 80).toBe(0)
     expect(g.length / SR).toBeGreaterThan(0.04)
     expect(g.length / SR).toBeLessThan(0.08)
@@ -20,5 +20,13 @@ describe('loopGrain', () => {
     const x = Float32Array.from({ length: SR / 4 }, () => Math.random() - 0.5)
     expect(loopGrain(x, 0)).not.toBeNull()
     expect(loopGrain(x, 0.25)).not.toBeNull()
+  })
+})
+
+describe('loop length', () => {
+  it('follows the requested length, at least one period', () => {
+    const x = Float32Array.from({ length: SR }, (_, i) => 0.3 * Math.sin((2 * Math.PI * 200 * i) / SR))
+    expect(loopGrain(x, 0.5, 0.02)!.length).toBe(320)
+    expect(loopGrain(x, 0.5, 0.001)!.length).toBe(80)
   })
 })

@@ -1,3 +1,6 @@
+import type { Tone } from '../analysis/tones'
+import { parseWordField, pinyinTones } from './word'
+
 /**
  * Minimal client for AnkiConnect (https://foosoft.net/projects/anki-connect/, add-on 2055492159),
  * which serves Anki's collection over HTTP on 127.0.0.1:8765 while Anki is open.
@@ -86,28 +89,69 @@ function decodeEntities(s: string): string {
 }
 
 const HAN = /\p{Script=Han}/u
+const hanCount = (s: string) => [...s].filter((c) => HAN.test(c)).length
 export const AUTO = ''
+/** Word field setting: don't use one. */
+export const NONE = '-'
 
 export interface NoteClip {
   noteId: number
   audio: string
+  /** What is said in the audio. */
   text: string
+  /** The word being learned, as written on the card. */
+  word?: string
+  /** Its code-point range in `text`, when found there. */
+  focus?: [number, number]
+  /** Its tones from the card's pinyin, or null when there is no readable pinyin. */
+  wordTones?: Tone[] | null
 }
 
 /**
- * The audio file and Chinese text of a note. With AUTO the audio is the first field with a sound tag
- * and the text the first other field containing Chinese characters (in field order).
+ * The audio file, the sentence said in it and the word being learned, from one note.
+ * AUTO picks: audio = the first field with a sound tag; sentence = the field with the most Chinese
+ * characters; word = the first other field whose characters occur in the sentence (its pinyin may
+ * follow it in the same field, e.g. "学习 xuéxí").
  */
-export function noteClip(note: AnkiNote, audioField = AUTO, textField = AUTO): NoteClip | null {
-  const fields = Object.entries(note.fields).sort((a, b) => a[1].order - b[1].order)
-  const audioEntry = audioField ? fields.find(([n]) => n === audioField) : fields.find(([, f]) => soundFiles(f.value).length)
-  const audio = audioEntry && soundFiles(audioEntry[1].value)[0]
+export function noteClip(note: AnkiNote, audioField = AUTO, textField = AUTO, wordField = AUTO): NoteClip | null {
+  const fields = Object.entries(note.fields)
+    .sort((a, b) => a[1].order - b[1].order)
+    .map(([name, f]) => ({ name, html: f.value, text: plainText(f.value) }))
+  const audioEntry = audioField ? fields.find((f) => f.name === audioField) : fields.find((f) => soundFiles(f.html).length)
+  const audio = audioEntry && soundFiles(audioEntry.html)[0]
   if (!audio) return null
-  const textEntry = textField
-    ? fields.find(([n]) => n === textField)
-    : fields.find(([n, f]) => n !== audioEntry[0] && HAN.test(plainText(f.value)))
-  const text = textEntry ? plainText(textEntry[1].value) : ''
-  return HAN.test(text) ? { noteId: note.noteId, audio, text } : null
+  const sentence = textField
+    ? fields.find((f) => f.name === textField)
+    : fields.reduce<(typeof fields)[number] | undefined>((best, f) => (hanCount(f.text) > (best ? hanCount(best.text) : 0) ? f : best), undefined)
+  const text = sentence?.text ?? ''
+  if (!HAN.test(text)) return null
+  const out: NoteClip = { noteId: note.noteId, audio, text }
+  if (wordField === NONE) return out
+
+  const chars = [...text]
+  const find = (word: string): [number, number] | undefined => {
+    const w = [...word]
+    for (let i = 0; i + w.length <= chars.length; i++) if (w.every((c, k) => chars[i + k] === c)) return [i, i + w.length]
+  }
+  let wf: { word: string; rest: string } | null = null
+  if (wordField) {
+    const f = fields.find((x) => x.name === wordField)
+    wf = f ? parseWordField(f.text) : null
+  } else {
+    for (const f of fields) {
+      if (f === sentence) continue
+      const p = parseWordField(f.text)
+      if (p && p.word.length <= 8 && p.word !== text && find(p.word)) {
+        wf = p
+        break
+      }
+    }
+  }
+  if (!wf) return out
+  out.word = wf.word
+  out.focus = find(wf.word)
+  out.wordTones = pinyinTones(wf.word, wf.rest)
+  return out
 }
 
 /** Up to `n` items, picked at random (keeps the input order). */

@@ -49,6 +49,8 @@ interface Clip {
 }
 
 const SIZES: [number, string][] = [[1, '1 word'], [2, '2 words'], [3, '3 words'], [0, 'Phrase']]
+/** Clip size: only the word the Anki card teaches. */
+const TARGET = -1
 const PAD_BEFORE = 0.06
 const PAD_AFTER = 0.1
 
@@ -64,7 +66,8 @@ export default function EarClips({ onAnswered, onOverride, game, onGame, source 
   const [samples, setSamples] = useState<Float32Array | null>(null)
   const [status, setStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [words, setWords] = useState(() => getPref<string>('ear.words', '2'))
+  const sizeKey = anki ? 'anki.words' : 'ear.words'
+  const [words, setWords] = useState(() => getPref<string>(sizeKey, anki ? String(TARGET) : '2'))
   const [showVideo, setShowVideo] = useState(() => getPref<boolean>('ear.video', false))
   const [clip, setClip] = useState<Clip | null>(null)
   const [chosen, setChosen] = useState<(Tone | null)[]>([])
@@ -150,20 +153,24 @@ export default function EarClips({ onAnswered, onOverride, game, onGame, source 
     const out: { cue: Cue; index: number }[] = []
     cues.forEach((cue, index) => {
       if (cue.end - cue.start < 0.4 || !/\p{Script=Han}/u.test(cue.text)) return
-      if (out.length && out[out.length - 1].cue.text === cue.text) return
+      if (out.length && out[out.length - 1].cue.text === cue.text && !cue.focus) return
       out.push({ cue, index })
     })
     return out
   }, [cues])
 
+  const hasTargets = useMemo(() => usable.some(({ cue }) => cue.focus), [usable])
+  const sizes = useMemo<[number, string][]>(() => (hasTargets ? [[TARGET, 'Learning word'], ...SIZES] : SIZES), [hasTargets])
+
   const clips = useMemo<Clip[]>(() => {
-    const n = Number(words)
+    const n = Number(words) === TARGET && !hasTargets ? 2 : Number(words)
     const out: Clip[] = []
     for (const { cue, index } of usable) {
-      const { chars, tones, lexical } = sentenceTones(cue.text)
+      const { chars, tones, lexical } = sentenceTones(cue.text, cue.tones)
       const han = hanIndex(cue.text)
       const syl = toPinyin(cue.text, { toneType: 'none', type: 'array', v: true, nonZh: 'removed' })
-      for (const r of buildClips(cue.text, n)) {
+      const ranges = n === TARGET ? (cue.focus ? [{ from: cue.focus[0], to: cue.focus[1] }] : []) : buildClips(cue.text, n)
+      for (const r of ranges) {
         const h0 = han[r.from]
         const h1 = han[r.to - 1]
         const t = tones.slice(r.from, r.to)
@@ -186,7 +193,7 @@ export default function EarClips({ onAnswered, onOverride, game, onGame, source 
       }
     }
     return out
-  }, [usable, words])
+  }, [usable, words, hasTargets])
 
   // Speaker range and Chao track from the voiced speech inside the cues.
   const ready = useMemo(() => {
@@ -456,7 +463,7 @@ export default function EarClips({ onAnswered, onOverride, game, onGame, source 
             <div className="controls ear-controls">
               <button className="primary" onClick={() => play(sClip)} disabled={playing}>▶ Clip</button>
               <button onClick={() => play(sClip, 0.6)} disabled={playing}>🐢 Slow</button>
-              <button onClick={() => play(sClip, 1, true)} disabled={playing}>{anki ? '▶ Card' : '▶ Line'}</button>
+              <button onClick={() => play(sClip, 1, true)} disabled={playing}>{anki ? '▶ Sentence' : '▶ Line'}</button>
             </div>
 
             <h3 className="ear-q">{sAnswered ? 'Answer' : `Tones of the ${sClip.tones.length} syllable${sClip.tones.length > 1 ? 's' : ''}?`}</h3>
@@ -478,8 +485,8 @@ export default function EarClips({ onAnswered, onOverride, game, onGame, source 
             {!autoReveal && !sAnswered && <button className="link small" onClick={() => next(clip)}>Skip (clip cut badly / audio unclear)</button>}
             {sAnswered && (
               <>
-                <p className="muted small">{anki ? 'Card' : 'Line'}: {cues[sClip.cue].text}</p>
-                <p className="muted small">Answers come from the {anki ? 'card' : 'subtitle'} text, so rare readings can be wrong, and clip edges are estimated.</p>
+                <p className="muted small">{anki ? 'Sentence' : 'Line'}: {cues[sClip.cue].text}</p>
+                <p className="muted small">{anki ? 'Tones come from your card (its pinyin for the word you are learning, otherwise a dictionary), with tone changes in the sentence applied; clip edges are estimated from the audio.' : 'Answers come from the subtitle text, so rare readings can be wrong, and clip edges are estimated.'}</p>
               </>
             )}
           </section>
@@ -487,13 +494,13 @@ export default function EarClips({ onAnswered, onOverride, game, onGame, source 
           <div className="options">
 <p className="muted small">Clip size</p>
 <div className="segmented compact" role="tablist" aria-label="Clip size">
-            {SIZES.map(([n, label]) => (
+            {sizes.map(([n, label]) => (
               <button
                 key={n}
                 role="tab"
-                aria-selected={words === String(n)}
-                className={words === String(n) ? 'active' : ''}
-                onClick={() => { setWords(String(n)); setPref('ear.words', String(n)); setClip(null) }}
+                aria-selected={words === String(n) || (n === 2 && words === String(TARGET) && !hasTargets)}
+                className={words === String(n) || (n === 2 && words === String(TARGET) && !hasTargets) ? 'active' : ''}
+                onClick={() => { setWords(String(n)); setPref(sizeKey, String(n)); setClip(null) }}
               >
                 {label}
               </button>

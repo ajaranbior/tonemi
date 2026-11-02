@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { noteClip, plainText, sample, soundFiles, type AnkiNote } from './connect'
+import { AUTO, NONE, noteClip, plainText, sample, soundFiles, type AnkiNote } from './connect'
 import { stitch, wavBlob } from './stitch'
 
 const note = (fields: Record<string, string>): AnkiNote => ({
@@ -31,6 +31,15 @@ describe('anki fields', () => {
     expect(noteClip(n)?.text).toBe('我很好。')
     expect(noteClip(note({ Front: 'hello', Back: 'world' }))).toBeNull()
     expect(noteClip(note({ Front: 'hello', Audio: '[sound:a.mp3]' }))).toBeNull()
+  })
+
+  it('finds the word being learned in the sentence, with tones from its pinyin', () => {
+    const n = note({ Word: '学习 xuéxí', Sentence: '我在<b>学习</b>中文。', Audio: '[sound:s.mp3]' })
+    expect(noteClip(n)).toEqual({ noteId: 1, audio: 's.mp3', text: '我在学习中文。', word: '学习', focus: [2, 4], wordTones: [2, 2] })
+    expect(noteClip(n, AUTO, AUTO, NONE)).toEqual({ noteId: 1, audio: 's.mp3', text: '我在学习中文。' })
+    const missing = note({ Word: '学习 xuéxí', Sentence: '我在读书。', Audio: '[sound:s.mp3]' })
+    expect(noteClip(missing, AUTO, AUTO, 'Word')).toMatchObject({ word: '学习', focus: undefined })
+    expect(noteClip(missing)?.word).toBeUndefined()
   })
 
   it('samples without repeats, in order', () => {

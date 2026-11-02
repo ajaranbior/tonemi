@@ -326,3 +326,11 @@ button.link { min-height: 0; padding: 0; border: 0; background: none; color: var
 .field-label .text-input { display: block; margin-top: 2px; }
 select.text-input { appearance: auto; }
 .anki-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0 8px; margin-bottom: 8px; }
+.anki-preview { margin: 4px 0 10px; }
+.anki-counts { padding-left: 18px; margin: 6px 0; }
+.anki-table { width: 100%; border-collapse: collapse; }
+.anki-table th { text-align: left; font-weight: 600; color: var(--muted, inherit); }
+.anki-table th, .anki-table td { padding: 4px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.anki-table mark { background: color-mix(in srgb, var(--accent) 22%, transparent); color: inherit; border-radius: 3px; padding: 0 1px; }
+.anki-tones { white-space: nowrap; }
+.anki-tones .glyph { vertical-align: middle; }

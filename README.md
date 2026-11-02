@@ -28,7 +28,10 @@ A personal Mandarin tone **production and recognition** trainer. Runs entirely i
   [AnkiConnect](https://ankiweb.net/shared/info/2055492159) add-on installed, pick a deck (plus an
   optional Anki search such as `tag:hsk3` or `rated:7`). Each load reads the cards' `[sound:…]` audio and
   Chinese text straight from Anki, so new and edited cards show up the next time; the field holding the
-  audio and the one holding the hanzi are found automatically or can be chosen. The first time, Anki asks
+  audio and the one holding the sentence are found automatically or can be chosen. If a field holds the
+  word you're learning (e.g. `学习 xuéxí`, tone marks or numbers), only that word is cut out of the
+  sentence audio and quizzed, with its tones taken from your pinyin; the whole sentence stays one tap
+  away. A preview shows how the cards were read before any audio loads. The first time, Anki asks
   whether to allow the site. Chrome, Edge and Firefox on the computer running Anki; Safari and phones
   can't reach AnkiConnect.
 - **Shadowing** — load your own audio/video + `.srt`/`.vtt`, loop a line, echo

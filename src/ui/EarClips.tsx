@@ -25,6 +25,9 @@ import { SandhiNote, ToneAnswer } from './ToneAnswer'
 import type { EarProps } from './EarBank'
 import { turnedGreen } from '../ear/game'
 import { useReview } from './useReview'
+import { AnkiSource, type AnkiLoaded } from './AnkiSource'
+import { wavBlob } from '../anki/stitch'
+import { SR } from '../analysis/pitch'
 import { FEEDBACK_SECONDS, playFeedback } from '../audio/sfx'
 
 interface Clip {
@@ -49,7 +52,11 @@ const SIZES: [number, string][] = [[1, '1 word'], [2, '2 words'], [3, '3 words']
 const PAD_BEFORE = 0.06
 const PAD_AFTER = 0.1
 
-export default function EarClips({ onAnswered, onOverride, game, onGame }: EarProps) {
+/** Where the audio comes from: a file + subtitles, or notes pulled from Anki. */
+export type ClipSource = 'video' | 'anki'
+
+export default function EarClips({ onAnswered, onOverride, game, onGame, source = 'video' }: EarProps & { source?: ClipSource }) {
+  const anki = source === 'anki'
   const [media, setMedia] = useState<{ url: string; video: boolean; name: string } | null>(null)
   const [cues, setCues] = useState<Cue[]>([])
   const [subName, setSubName] = useState<string | null>(null)
@@ -113,6 +120,28 @@ export default function EarClips({ onAnswered, onOverride, game, onGame }: EarPr
     } catch (e) {
       setStatus(null)
       setError(`Could not decode this file (${String(e)}). Try an mp3/m4a/mp4/webm.`)
+    }
+  }
+
+  /** Already-decoded audio with its own cues (Anki notes joined into one track). */
+  const loadDecoded = async ({ samples, cues, label }: AnkiLoaded) => {
+    setError(null)
+    setNative(null)
+    setSamples(null)
+    setClip(null)
+    stopSpan(mediaEl.current)
+    if (media) URL.revokeObjectURL(media.url)
+    setMedia({ url: URL.createObjectURL(wavBlob(samples, SR)), video: false, name: label })
+    setCues(cues)
+    setSubName(label)
+    setSamples(samples)
+    try {
+      setStatus('Analysing pitch…')
+      setNative(await trackInWorker(samples))
+      setStatus(null)
+    } catch (e) {
+      setStatus(null)
+      setError(`Pitch analysis failed (${String(e)}).`)
     }
   }
 
@@ -359,20 +388,26 @@ export default function EarClips({ onAnswered, onOverride, game, onGame }: EarPr
   return (
     <>
       <section className="card">
-        <h2>Train on a video</h2>
-        <label className="file">
-          <input type="file" multiple accept="audio/*,video/*,.srt,.vtt,text/vtt" onChange={(e) => { void loadFiles(e.target.files); e.target.value = '' }} />
-          <span>📂 Choose audio/video + subtitles</span>
-        </label>
-        <p className="muted small">
-          Select the media file and the .srt/.vtt together (or one after the other).
-        </p>
-        <p className="muted small">
-          {media ? `🎬 ${media.name}` : 'No audio/video yet'} · {subName ? `💬 ${subName} (${usable.length} lines)` : 'no subtitles yet'}
-        </p>
+        {anki ? (
+          <AnkiSource onLoad={loadDecoded} busy={status !== null} />
+        ) : (
+          <>
+            <h2>Train on a video</h2>
+            <label className="file">
+              <input type="file" multiple accept="audio/*,video/*,.srt,.vtt,text/vtt" onChange={(e) => { void loadFiles(e.target.files); e.target.value = '' }} />
+              <span>📂 Choose audio/video + subtitles</span>
+            </label>
+            <p className="muted small">
+              Select the media file and the .srt/.vtt together (or one after the other).
+            </p>
+            <p className="muted small">
+              {media ? `🎬 ${media.name}` : 'No audio/video yet'} · {subName ? `💬 ${subName} (${usable.length} lines)` : 'no subtitles yet'}
+            </p>
+          </>
+        )}
         {status && <p className="muted small">{status}</p>}
         {error && <p className="bad small">{error}</p>}
-        <YoutubeHelp />
+        {!anki && <YoutubeHelp />}
         {media &&
           (media.video ? (
             <video ref={mediaEl} src={media.url} playsInline className="media" hidden={!showVideo} />
@@ -421,7 +456,7 @@ export default function EarClips({ onAnswered, onOverride, game, onGame }: EarPr
             <div className="controls ear-controls">
               <button className="primary" onClick={() => play(sClip)} disabled={playing}>▶ Clip</button>
               <button onClick={() => play(sClip, 0.6)} disabled={playing}>🐢 Slow</button>
-              <button onClick={() => play(sClip, 1, true)} disabled={playing}>▶ Line</button>
+              <button onClick={() => play(sClip, 1, true)} disabled={playing}>{anki ? '▶ Card' : '▶ Line'}</button>
             </div>
 
             <h3 className="ear-q">{sAnswered ? 'Answer' : `Tones of the ${sClip.tones.length} syllable${sClip.tones.length > 1 ? 's' : ''}?`}</h3>
@@ -443,8 +478,8 @@ export default function EarClips({ onAnswered, onOverride, game, onGame }: EarPr
             {!autoReveal && !sAnswered && <button className="link small" onClick={() => next(clip)}>Skip (clip cut badly / audio unclear)</button>}
             {sAnswered && (
               <>
-                <p className="muted small">Line: {cues[sClip.cue].text}</p>
-                <p className="muted small">Answers come from the subtitle text, so rare readings can be wrong, and clip edges are estimated.</p>
+                <p className="muted small">{anki ? 'Card' : 'Line'}: {cues[sClip.cue].text}</p>
+                <p className="muted small">Answers come from the {anki ? 'card' : 'subtitle'} text, so rare readings can be wrong, and clip edges are estimated.</p>
               </>
             )}
           </section>
@@ -467,13 +502,13 @@ export default function EarClips({ onAnswered, onOverride, game, onGame }: EarPr
 
 </div>
 <details className="card settings">
-            <summary>Video settings</summary>
+            <summary>{anki ? 'Anki settings' : 'Video settings'}</summary>
             <Toggle label="Streaks and points" value={game} onChange={onGame} />
             <Toggle label="Sound effects and vibration for right/wrong" value={sound} onChange={(v) => { setSound(v); setPref('ear.sound', v) }} />
             <Toggle label="Reveal the answer as soon as all tones are chosen" value={autoReveal} onChange={(v) => { setAutoReveal(v); setPref('ear.auto', v) }} />
             {media?.video && <Toggle label="Show video (may reveal burned-in subtitles)" value={showVideo} onChange={(v) => { setShowVideo(v); setPref('ear.video', v) }} />}
             <LoopLength />
-            <p className="muted small">Pitch range is estimated from the speech in the subtitled lines; background music or several speakers make the chart less accurate.</p>
+            <p className="muted small">Pitch range is estimated from the speech in the {anki ? 'loaded cards, so a deck with several speakers makes the chart less accurate' : 'subtitled lines; background music or several speakers make the chart less accurate'}.</p>
           </details>
         </>
       )}

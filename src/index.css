@@ -320,3 +320,9 @@ button.link { min-height: 0; padding: 0; border: 0; background: none; color: var
 .sandhi { list-style: none; padding: 0; margin: 6px 0; }
 .slider-setting { display: flex; flex-direction: column; gap: 4px; padding: 6px 0; }
 .slider-setting input { width: 100%; max-width: 360px; accent-color: var(--accent); }
+
+/* Anki source */
+.field-label { display: block; margin-top: 6px; }
+.field-label .text-input { display: block; margin-top: 2px; }
+select.text-input { appearance: auto; }
+.anki-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0 8px; margin-bottom: 8px; }

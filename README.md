@@ -24,6 +24,13 @@ A personal Mandarin tone **production and recognition** trainer. Runs entirely i
   *Video mode*: load audio/video plus `.srt`/`.vtt`, the lines are split into words
   (`Intl.Segmenter`), clip boundaries are estimated from the pitch/energy of the audio,
   and you train on 1–3 words or a whole phrase at a time.
+  *Anki mode*: train on the audio of your own Anki cards. With Anki desktop open and the
+  [AnkiConnect](https://ankiweb.net/shared/info/2055492159) add-on installed, pick a deck (plus an
+  optional Anki search such as `tag:hsk3` or `rated:7`). Each load reads the cards' `[sound:…]` audio and
+  Chinese text straight from Anki, so new and edited cards show up the next time; the field holding the
+  audio and the one holding the hanzi are found automatically or can be chosen. The first time, Anki asks
+  whether to allow the site. Chrome, Edge and Firefox on the computer running Anki; Safari and phones
+  can't reach AnkiConnect.
 - **Shadowing** — load your own audio/video + `.srt`/`.vtt`, loop a line, echo
   it or shadow along; the whole-line melody is compared with DTW and scored.
   Subtitles show Mainland surface tones (一/不/3-3 sandhi, neutral tones).

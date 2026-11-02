@@ -18,8 +18,10 @@ import { parseSubtitles, type Cue } from '../subtitles'
 import { Toggle } from './Toggle'
 import { PitchPlot, type PlotLine } from './PitchPlot'
 import { answerOverlay } from './earPlot'
-import { AnswerPreview } from './AnswerPreview'
-import { ResultBanner, SandhiNote, ToneAnswer } from './ToneAnswer'
+import { EarStage, ResultChip } from './EarStage'
+import { SandhiNote, ToneAnswer } from './ToneAnswer'
+import type { EarProps } from './EarBank'
+import { turnedGreen } from '../ear/game'
 import { useReview } from './useReview'
 import { FEEDBACK_SECONDS, playFeedback } from '../audio/sfx'
 
@@ -45,12 +47,7 @@ const SIZES: [number, string][] = [[1, '1 word'], [2, '2 words'], [3, '3 words']
 const PAD_BEFORE = 0.06
 const PAD_AFTER = 0.1
 
-interface Props {
-  onAnswered: (correct: boolean) => void
-  onOverride: (delta: 1 | -1) => void
-}
-
-export default function EarClips({ onAnswered, onOverride }: Props) {
+export default function EarClips({ onAnswered, onOverride, game, onGame }: EarProps) {
   const [media, setMedia] = useState<{ url: string; video: boolean; name: string } | null>(null)
   const [cues, setCues] = useState<Cue[]>([])
   const [subName, setSubName] = useState<string | null>(null)
@@ -65,6 +62,7 @@ export default function EarClips({ onAnswered, onOverride }: Props) {
   const [playing, setPlaying] = useState(false)
   const [cursor, setCursor] = useState<number | undefined>()
   const [accepted, setAccepted] = useState(false)
+  const [comeback, setComeback] = useState(false)
   const lastRec = useRef<TrialRecord | null>(null)
   const [sound, setSound] = useState(() => getPref<boolean>('ear.sound', true))
   const [autoReveal, setAutoReveal] = useState(() => getPref<boolean>('ear.auto', true))
@@ -180,6 +178,7 @@ export default function EarClips({ onAnswered, onOverride }: Props) {
       if (clip && answered) review.record({ item: clip, chosen, accepted, rec: lastRec.current ?? undefined })
       review.leave()
       setAccepted(false)
+      setComeback(false)
       lastRec.current = null
       autoplay.current = play
       setClip(pick)
@@ -237,15 +236,19 @@ export default function EarClips({ onAnswered, onOverride }: Props) {
     const g = grade(clip.tones, answers)
     const conf = clip.tones.flatMap((t, i) => (g.correct[i] ? [] : [`${t}>${answers[i]}`]))
     lastRec.current = { key: clip.key, conf }
-    setEarCombo(clip.key, updateStat(getEarCombos()[clip.key], g.all))
+    const before = getEarCombos()[clip.key]
+    const stat = updateStat(before, g.all)
+    setEarCombo(clip.key, stat)
+    const back = g.all && retry.current.some((r) => r.id === clip.id)
     conf.forEach(addEarConfusion)
     trial.current++
     retry.current = g.all ? clearRetry(retry.current, clip.id) : scheduleRetry(retry.current, clip.id, trial.current)
     setAnswered(true)
-    onAnswered(g.all)
-    if (sound) playFeedback(g.all)
+    setComeback(back)
+    onAnswered(g.all, { comeback: back, milestone: turnedGreen(before?.ema, stat.ema, stat.n) ? [...clip.key].join('-') : undefined })
+    if (sound) playFeedback(g.all, game && back)
     if (!g.all) setTimeout(() => void play(clip), sound ? FEEDBACK_SECONDS * 1000 : 0)
-  }, [clip, answered, chosen, onAnswered, play, sound])
+  }, [clip, answered, chosen, onAnswered, play, sound, game])
 
   const rv = review.reviewing
   const sClip = rv ? rv.item : clip
@@ -339,6 +342,8 @@ export default function EarClips({ onAnswered, onOverride }: Props) {
 
   const complete = chosen.length > 0 && chosen.every((c) => c !== null)
   const g = sClip && sAnswered ? grade(sClip.tones, sChosen) : null
+  const ok = rv ? !!rv.accepted : accepted
+  const sSpan = sClip ? span(sClip) : null
 
   return (
     <>
@@ -370,9 +375,9 @@ export default function EarClips({ onAnswered, onOverride }: Props) {
       {ready && sClip && (
         <>
           
-          <section className={`card ${g ? (g.all || (rv ? !!rv.accepted : accepted) ? 'flash-ok' : 'flash-bad') : ''}`}>
-            {g && <ResultBanner key={sClip.id + sChosen.join('') + String((rv ? !!rv.accepted : accepted))} grade={g} accepted={(rv ? !!rv.accepted : accepted)} />}
-            <div className="item-head">
+          <section className={`card ${g ? (g.all || ok ? 'flash-ok' : 'flash-bad') : ''}`}>
+            {rv && <div className="banner">Reviewing an earlier clip ({(review.index ?? 0) + 1} of {review.count})</div>}
+            <div className="item-head ear-head">
               <div>
                 {sAnswered ? (
                   <>
@@ -387,11 +392,20 @@ export default function EarClips({ onAnswered, onOverride }: Props) {
                   <div className="hanzi muted" aria-label="Clip text hidden">？</div>
                 )}
               </div>
+              {g && <ResultChip key={sClip.id + sChosen.join('') + String(ok)} grade={g} accepted={ok} comeback={game && !rv && comeback} />}
             </div>
 
-            {sAnswered && g && <ClipChart clip={sClip} chosen={sChosen} ready={ready} span={span(sClip)} cursor={cursor} />}
-            {sAnswered && <SandhiNote syllables={sClip.pinyin} expected={sClip.tones} lexical={sClip.lexical} />}
-            {g && !g.all && <p className="muted small">Grey is what was really said; red is the tone you picked. Space replays it; the line follows the audio.</p>}
+            <EarStage
+              key={sClip.id + String(review.index)}
+              answered={sAnswered && !!g}
+              chart={g && <ClipChart clip={sClip} chosen={sChosen} ready={ready} span={sSpan} cursor={cursor} />}
+              slots={sClip.tones.length}
+              duration={sSpan ? sSpan[1] - sSpan[0] : 1}
+              cursor={cursor !== undefined && sSpan ? cursor - sSpan[0] : undefined}
+              playing={playing}
+              onPlay={() => void play(sClip)}
+              preview={g && !g.all && !ok ? { chosen: sChosen as Tone[], syllables: sClip.syllables } : null}
+            />
 
             <div className="controls ear-controls">
               <button className="primary" onClick={() => play(sClip)} disabled={playing}>▶ Clip</button>
@@ -405,23 +419,24 @@ export default function EarClips({ onAnswered, onOverride }: Props) {
               <button onClick={review.back} disabled={!review.canBack}>← Back</button>
               {!sAnswered && !autoReveal ? (
                 <button className="primary" onClick={() => check()} disabled={!complete}>Check</button>
+              ) : sAnswered ? (
+                <button className="primary" onClick={advance}>Next →</button>
               ) : (
-                <button className="primary" onClick={advance} disabled={!sAnswered}>Next →</button>
+                <button onClick={() => next(clip)} title="Clip cut badly or audio unclear">Skip →</button>
               )}
             </div>
             {g && !g.all && (
-              <button className="link small" onClick={toggleAccept}>{(rv ? !!rv.accepted : accepted) ? 'Undo: count this as incorrect again (M)' : 'I was right — mark my answer as correct (M)'}</button>
+              <button className="link small" onClick={toggleAccept}>{ok ? 'Undo: count this as incorrect again (M)' : 'I was right — mark my answer as correct (M)'}</button>
             )}
-            {!sAnswered && <button className="link small" onClick={() => next(clip)}>Skip (clip cut badly / audio unclear)</button>}
+            {sAnswered && <SandhiNote syllables={sClip.pinyin} expected={sClip.tones} lexical={sClip.lexical} />}
+            {!autoReveal && !sAnswered && <button className="link small" onClick={() => next(clip)}>Skip (clip cut badly / audio unclear)</button>}
+            {sAnswered && (
+              <>
+                <p className="muted small">Line: {cues[sClip.cue].text}</p>
+                <p className="muted small">Answers come from the subtitle text, so rare readings can be wrong, and clip edges are estimated.</p>
+              </>
+            )}
           </section>
-
-          {sAnswered && g && (
-            <section className="card">
-              {!g.all && !(rv ? !!rv.accepted : accepted) && <AnswerPreview key={sClip.id + sChosen.join('')} chosen={sChosen as Tone[]} syllables={sClip.syllables} />}
-              <p className="muted small">Line: {cues[sClip.cue].text}</p>
-              <p className="muted small">Answers are generated from the subtitle text, so rare readings can be wrong, and clip edges are estimated.</p>
-            </section>
-          )}
 
           <div className="options">
 <p className="muted small">Clip size</p>
@@ -442,6 +457,7 @@ export default function EarClips({ onAnswered, onOverride }: Props) {
 </div>
 <details className="card settings">
             <summary>Video settings</summary>
+            <Toggle label="Streaks and points" value={game} onChange={onGame} />
             <Toggle label="Sound effects and vibration for right/wrong" value={sound} onChange={(v) => { setSound(v); setPref('ear.sound', v) }} />
             <Toggle label="Reveal the answer as soon as all tones are chosen" value={autoReveal} onChange={(v) => { setAutoReveal(v); setPref('ear.auto', v) }} />
             {media?.video && <Toggle label="Show video (may reveal burned-in subtitles)" value={showVideo} onChange={(v) => { setShowVideo(v); setPref('ear.video', v) }} />}
@@ -490,7 +506,9 @@ function ClipChart({ clip, chosen, ready, span, cursor }: { clip: Clip; chosen: 
   const playhead = cursor !== undefined && span ? cursor - from * hop - 0.032 : undefined
   return (
     <>
-      <PitchPlot lines={lines} duration={(to - from) * hop} labels={labels} boundaries={boundaries} cursor={playhead} height={chosen.some((c, i) => c !== clip.tones[i]) ? 300 : 230} />
+      <div className="stage-plot">
+        <PitchPlot lines={lines} duration={(to - from) * hop} labels={labels} boundaries={boundaries} cursor={playhead} height="100%" />
+      </div>
       <div className="legend">
         <span className="key ref" /> speaker
         {guess && (
@@ -498,6 +516,7 @@ function ClipChart({ clip, chosen, ready, span, cursor }: { clip: Clip; chosen: 
             <span className="key wrong" /> the tone you picked
           </>
         )}
+        <span className="legend-hint">Space replays</span>
       </div>
     </>
   )

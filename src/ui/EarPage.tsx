@@ -1,8 +1,9 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { topConfusions } from '../ear/adapt'
+import { addDays, DAILY_GOAL, dailyStreak, dayKey, pointsFor, POINTS, sinceMonday } from '../ear/game'
 import { navigate, useRoute } from '../route'
-import { getEarCombos, getEarConfusions, getPref, resetEar, setPref } from '../store'
-import { EarBank } from './EarBank'
+import { addEarGame, getEarCombos, getEarConfusions, getEarGame, getPref, resetEar, setPref } from '../store'
+import { EarBank, type AnswerExtra } from './EarBank'
 import type { Tone } from '../analysis/tones'
 import { ToneChip, ToneGlyph } from './ToneGlyph'
 
@@ -21,17 +22,51 @@ export function EarPage() {
   }, [route, mode])
   const [session, setSession] = useState({ n: 0, ok: 0 })
   const [tick, setTick] = useState(0)
+  const [game, setGame] = useState(() => getPref<boolean>('ear.game', true))
+  const [combo, setCombo] = useState(0)
+  /** Latest points gained, keyed so the float animation restarts. */
+  const [gain, setGain] = useState<{ n: number; pts: number; comeback: boolean } | null>(null)
+  const [toast, setToast] = useState<{ n: number; text: string } | null>(null)
+  const toastTimer = useRef<number | undefined>(undefined)
 
-  const answered = useCallback((correct: boolean) => {
-    setSession((s) => ({ n: s.n + 1, ok: s.ok + (correct ? 1 : 0) }))
-    setTick((t) => t + 1)
+  const showToast = useCallback((text: string) => {
+    setToast((t) => ({ n: (t?.n ?? 0) + 1, text }))
+    window.clearTimeout(toastTimer.current)
+    toastTimer.current = window.setTimeout(() => setToast(null), 2800)
   }, [])
+  useEffect(() => () => window.clearTimeout(toastTimer.current), [])
+
+  // Points and days are tracked even with the game hidden, so switching it on shows real history.
+  const answered = useCallback(
+    (correct: boolean, extra: AnswerExtra) => {
+      setSession((s) => ({ n: s.n + 1, ok: s.ok + (correct ? 1 : 0) }))
+      setTick((t) => t + 1)
+      const today = dayKey()
+      const before = getEarGame().days[today] ?? 0
+      const nextCombo = correct ? combo + 1 : 0
+      setCombo(nextCombo)
+      const pts = pointsFor(correct, extra.comeback)
+      addEarGame(today, pts, 1, nextCombo)
+      if (!game) return
+      setGain((g) => ({ n: (g?.n ?? 0) + 1, pts, comeback: extra.comeback }))
+      if (before + 1 === DAILY_GOAL) showToast(`🔥 Daily goal reached · ${dailyStreak(getEarGame().days, today)}-day streak`)
+      else if (extra.milestone) showToast(`🎉 ${extra.milestone} is green now`)
+      else if (correct && nextCombo > 0 && nextCombo % 10 === 0) showToast(`⚡ ${nextCombo} in a row!`)
+    },
+    [combo, game, showToast],
+  )
 
   // The learner overruled the key (or took that back): a miss counts as a hit, or the reverse.
   const overridden = useCallback((delta: 1 | -1) => {
     setSession((s) => ({ ...s, ok: s.ok + delta }))
+    addEarGame(dayKey(), delta * (POINTS.correct - POINTS.attempt), 0)
     setTick((t) => t + 1)
   }, [])
+
+  const toggleGame = (on: boolean) => {
+    setGame(on)
+    setPref('ear.game', on)
+  }
 
   const choose = (m: Mode) => {
     setPref('ear.mode', m)
@@ -40,28 +75,85 @@ export function EarPage() {
 
   return (
     <div className="page">
+      {game && <GameBar tick={tick} combo={combo} gain={gain} />}
 
       {mode === 'words' ? (
-        <EarBank onAnswered={answered} onOverride={overridden} />
+        <EarBank onAnswered={answered} onOverride={overridden} game={game} onGame={toggleGame} />
       ) : (
         <Suspense fallback={<div className="card">Loading…</div>}>
-          <EarClips onAnswered={answered} onOverride={overridden} />
+          <EarClips onAnswered={answered} onOverride={overridden} game={game} onGame={toggleGame} />
         </Suspense>
       )}
 
       <div className="options">
         <p className="muted small">Practice with</p>
-      <div className="segmented compact" role="tablist" aria-label="Ear training source">
-        <button role="tab" aria-selected={mode === 'words'} className={mode === 'words' ? 'active' : ''} onClick={() => choose('words')}>
-          📚 Words
-        </button>
-        <button role="tab" aria-selected={mode === 'video'} className={mode === 'video' ? 'active' : ''} onClick={() => choose('video')}>
-          🎬 Video / audio
-        </button>
-      </div>
+        <div className="segmented compact" role="tablist" aria-label="Ear training source">
+          <button role="tab" aria-selected={mode === 'words'} className={mode === 'words' ? 'active' : ''} onClick={() => choose('words')}>
+            📚 Words
+          </button>
+          <button role="tab" aria-selected={mode === 'video'} className={mode === 'video' ? 'active' : ''} onClick={() => choose('video')}>
+            🎬 Video / audio
+          </button>
+        </div>
       </div>
 
       <EarStats session={session} tick={tick} onReset={() => { resetEar(); setTick((t) => t + 1) }} />
+
+      {toast && (
+        <div key={toast.n} className="toast" role="status">
+          {toast.text}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** One fixed-height strip: daily streak, today's goal, combo and points. */
+function GameBar({ tick, combo, gain }: { tick: number; combo: number; gain: { n: number; pts: number; comeback: boolean } | null }) {
+  void tick // re-read the store after every answer
+  const g = getEarGame()
+  const today = dayKey()
+  const done = g.days[today] ?? 0
+  const streak = dailyStreak(g.days, today)
+  const pct = Math.min(1, done / DAILY_GOAL)
+  return (
+    <div className="game-bar" aria-label="Streaks and points">
+      <span className={`game-stat ${streak > 0 ? 'lit' : ''}`} title={`Days in a row with at least ${DAILY_GOAL} answers (right or wrong)`}>
+        🔥 <strong>{streak}</strong> <span className="muted">day{streak === 1 ? '' : 's'}</span>
+      </span>
+      <span className="game-stat" title={`Today: ${done} of ${DAILY_GOAL} answers`}>
+        <span className="goal-ring" style={{ ['--p' as string]: `${pct * 360}deg` }} aria-hidden="true" />
+        <span className="muted">{Math.min(done, DAILY_GOAL)}/{DAILY_GOAL} today</span>
+      </span>
+      <span className={`game-stat ${combo >= 3 ? 'lit' : ''}`} title={`Right answers in a row (best ${g.bestCombo})`}>
+        ⚡ <strong>{combo}</strong>
+      </span>
+      <span className="game-stat game-xp" title="Points: +2 for any answer, +10 right, +25 right on a word you missed before">
+        ★ <strong>{g.xp.toLocaleString()}</strong>
+        {gain && (
+          <span key={gain.n} className={`points-float ${gain.comeback ? 'comeback' : ''}`} aria-hidden="true">
+            +{gain.pts}
+          </span>
+        )}
+      </span>
+    </div>
+  )
+}
+
+/** The last five weeks as a small calendar, shaded by answers per day. */
+function PracticeCalendar() {
+  const days = getEarGame().days
+  const today = dayKey()
+  // Start on the Monday five weeks back so the columns line up by weekday.
+  const start = addDays(today, -sinceMonday(today) - 28)
+  const cells = Array.from({ length: 35 }, (_, i) => addDays(start, i))
+  return (
+    <div className="calendar" role="img" aria-label="Practice over the last five weeks">
+      {cells.map((d) => {
+        const n = days[d] ?? 0
+        const level = d > today ? 'future' : n === 0 ? 'l0' : n < DAILY_GOAL / 2 ? 'l1' : n < DAILY_GOAL ? 'l2' : 'l3'
+        return <span key={d} className={`cal-day ${level} ${d === today ? 'today' : ''}`} title={`${d}: ${n} answers`} />
+      })}
     </div>
   )
 }
@@ -91,10 +183,18 @@ function EarStats({ session, tick, onReset }: { session: { n: number; ok: number
   const conf = topConfusions(getEarConfusions(), 5)
   if (!session.n && !all.length && !conf.length) return null
   return (
-    <details className="card settings" open={session.n >= 5}>
+    <details className="card settings">
       <summary>
         Progress{session.n > 0 && ` · ${session.ok}/${session.n} right this session`}
       </summary>
+
+      {Object.keys(getEarGame().days).length > 0 && (
+        <section className="stat-block">
+          <h3>Practice days</h3>
+          <p className="muted small">Last five weeks, Monday first; darker means more answers (goal: {DAILY_GOAL} a day).</p>
+          <PracticeCalendar />
+        </section>
+      )}
 
       {all.length > 0 && (
         <section className="stat-block">

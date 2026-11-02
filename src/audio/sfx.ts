@@ -17,19 +17,23 @@ function note(ctx: AudioContext, freq: number, at: number, len: number, type: Os
 /** Duration (s) of the feedback sound, so callers can wait before playing speech. */
 export const FEEDBACK_SECONDS = 0.4
 
-/** A bright two-note chime for right, a low soft buzz for wrong. Also vibrates on phones. */
-export function playFeedback(correct: boolean) {
+/** A bright two-note chime for right, a low soft buzz for wrong, a rising arpeggio for a comeback. Also vibrates on phones. */
+export function playFeedback(correct: boolean, comeback = false) {
   try {
     const ctx = audioContext()
     const t = ctx.currentTime + 0.01
-    if (correct) {
+    if (correct && comeback) {
+      note(ctx, 659, t, 0.14, 'triangle', 0.2)
+      note(ctx, 880, t + 0.08, 0.14, 'triangle', 0.2)
+      note(ctx, 1319, t + 0.16, 0.32, 'triangle', 0.22)
+    } else if (correct) {
       note(ctx, 784, t, 0.18, 'triangle', 0.22)
       note(ctx, 1175, t + 0.1, 0.3, 'triangle', 0.22)
     } else {
       note(ctx, 196, t, 0.32, 'sawtooth', 0.12, 130)
       note(ctx, 185, t, 0.32, 'square', 0.05, 123)
     }
-    navigator.vibrate?.(correct ? 25 : [70, 50, 70])
+    navigator.vibrate?.(comeback ? [20, 40, 20] : correct ? 25 : [70, 50, 70])
   } catch {
     // audio is optional feedback; never break the exercise
   }

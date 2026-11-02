@@ -1,5 +1,4 @@
 import type { Tone } from '../analysis/tones'
-import type { Grade } from '../ear/adapt'
 import { ToneGlyph } from './ToneGlyph'
 
 const OPTIONS: Tone[] = [1, 2, 3, 4, 0]
@@ -76,15 +75,5 @@ export function SandhiNote({ syllables, expected, lexical }: SandhiProps) {
         </li>
       ))}
     </ul>
-  )
-}
-
-/** Big coloured result strip; the pop/shake animation restarts whenever it mounts. */
-export function ResultBanner({ grade, accepted }: { grade: Grade; accepted?: boolean }) {
-  return (
-    <div className={`result ${grade.all || accepted ? 'ok' : 'bad'}`} role="status">
-      <span>{accepted ? '✓ Marked correct' : grade.all ? '✓ Correct' : '✗ Not quite'}</span>
-      {accepted && <small>you overruled the key</small>}
-    </div>
   )
 }

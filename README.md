@@ -15,6 +15,10 @@ A personal Mandarin tone **production and recognition** trainer. Runs entirely i
   patterns come up more often, missed items return a few trials later, and the progress
   card lists your most-confused tone pairs. After each answer you see the speaker's real
   pitch chart, and on a mistake the textbook shape of the tone you picked drawn over it.
+  The chart lives in a fixed-size box, so the buttons never move when the answer appears; after a
+  mistake a second tab plays a word with the tones you picked. Optional streaks and points (Ear
+  settings): a daily-practice streak that counts any answer, a right-in-a-row combo, and a bonus
+  for getting a previously missed word right.
   *Video mode*: load audio/video plus `.srt`/`.vtt`, the lines are split into words
   (`Intl.Segmenter`), clip boundaries are estimated from the pitch/energy of the audio,
   and you train on 1–3 words or a whole phrase at a time.

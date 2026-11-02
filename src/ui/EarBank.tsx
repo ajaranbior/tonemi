@@ -11,8 +11,9 @@ import { Toggle } from './Toggle'
 import { PitchPlot, type PlotLine } from './PitchPlot'
 import { answerOverlay } from './earPlot'
 import { marked } from './tone'
-import { AnswerPreview } from './AnswerPreview'
-import { ResultBanner, SandhiNote, ToneAnswer } from './ToneAnswer'
+import { EarStage, ResultChip } from './EarStage'
+import { SandhiNote, ToneAnswer } from './ToneAnswer'
+import { turnedGreen } from '../ear/game'
 import { useReview } from './useReview'
 import { FEEDBACK_SECONDS, playFeedback } from '../audio/sfx'
 
@@ -22,12 +23,22 @@ const BASIC: ItemKind[] = ['single', 'pair', 'triple']
 
 const comboKey = (i: BankItem) => i.surface.join('')
 
-interface Props {
-  onAnswered: (correct: boolean) => void
-  onOverride: (delta: 1 | -1) => void
+export interface AnswerExtra {
+  /** Right on a word that was missed a few trials earlier. */
+  comeback: boolean
+  /** Tone pattern (e.g. "3-4") that this answer pushed into the green. */
+  milestone?: string
 }
 
-export function EarBank({ onAnswered, onOverride }: Props) {
+export interface EarProps {
+  onAnswered: (correct: boolean, extra: AnswerExtra) => void
+  onOverride: (delta: 1 | -1) => void
+  /** Streaks & points enabled. */
+  game: boolean
+  onGame: (on: boolean) => void
+}
+
+export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
   const [manifest, setManifest] = useState<Manifest | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [kind, setKind] = useState<Kind>(() => getPref('ear.kind', 'pair') as Kind)
@@ -38,6 +49,7 @@ export function EarBank({ onAnswered, onOverride }: Props) {
   const [playing, setPlaying] = useState(false)
   const [cursor, setCursor] = useState<number | undefined>()
   const [accepted, setAccepted] = useState(false)
+  const [comeback, setComeback] = useState(false)
   const lastRec = useRef<TrialRecord | null>(null)
   const [sound, setSound] = useState(() => getPref<boolean>('ear.sound', true))
   const [autoReveal, setAutoReveal] = useState(() => getPref<boolean>('ear.auto', true))
@@ -68,6 +80,7 @@ export function EarBank({ onAnswered, onOverride }: Props) {
       if (item && answered) review.record({ item, chosen, accepted, rec: lastRec.current ?? undefined })
       review.leave()
       setAccepted(false)
+      setComeback(false)
       lastRec.current = null
       autoplay.current = play
       setItem(pick)
@@ -123,15 +136,19 @@ export function EarBank({ onAnswered, onOverride }: Props) {
     const key = comboKey(item)
     const conf = item.surface.flatMap((t, i) => (g.correct[i] ? [] : [`${t}>${answers[i]}`]))
     lastRec.current = { key, conf }
-    setEarCombo(key, updateStat(getEarCombos()[key], g.all))
+    const before = getEarCombos()[key]
+    const stat = updateStat(before, g.all)
+    setEarCombo(key, stat)
+    const back = g.all && retry.current.some((r) => r.id === item.id)
     conf.forEach(addEarConfusion)
     trial.current++
     retry.current = g.all ? clearRetry(retry.current, item.id) : scheduleRetry(retry.current, item.id, trial.current)
     setAnswered(true)
-    onAnswered(g.all)
-    if (sound) playFeedback(g.all)
+    setComeback(back)
+    onAnswered(g.all, { comeback: back, milestone: turnedGreen(before?.ema, stat.ema, stat.n) ? [...key].join('-') : undefined })
+    if (sound) playFeedback(g.all, game && back)
     if (!g.all) setTimeout(() => void listen(), sound ? FEEDBACK_SECONDS * 1000 : 0)
-  }, [item, answered, chosen, onAnswered, listen, sound])
+  }, [item, answered, chosen, onAnswered, listen, sound, game])
 
   /** The learner disagrees with the answer key (or takes that back): flip this trial's result. */
   const toggleAccept = useCallback(() => {
@@ -231,14 +248,13 @@ export function EarBank({ onAnswered, onOverride }: Props) {
   if (!manifest || !shown || !refRange) return <div className="card">Loading word bank…</div>
 
   const pinyin = marked(shown.syllables, shown.surface)
+  const ok = rv ? !!rv.accepted : accepted
 
   return (
     <>
-      
-      <section className={`card ${g ? (g.all || (rv ? !!rv.accepted : accepted) ? 'flash-ok' : 'flash-bad') : ''}`}>
+      <section className={`card ${g ? (g.all || ok ? 'flash-ok' : 'flash-bad') : ''}`}>
         {rv && <div className="banner">Reviewing an earlier word ({(review.index ?? 0) + 1} of {review.count})</div>}
-        {g && <ResultBanner key={shown.id + shownChosen.join('') + String((rv ? !!rv.accepted : accepted))} grade={g} accepted={(rv ? !!rv.accepted : accepted)} />}
-        <div className="item-head">
+        <div className="item-head ear-head">
           <div>
             {shownAnswered || showHanzi ? (
               <>
@@ -255,10 +271,20 @@ export function EarBank({ onAnswered, onOverride }: Props) {
               <div className="hanzi muted" aria-label="Word hidden">？</div>
             )}
           </div>
+          {g && <ResultChip key={shown.id + shownChosen.join('') + String(ok)} grade={g} accepted={ok} comeback={game && !rv && comeback} />}
         </div>
 
-        {shownAnswered && g && <ReferenceChart item={shown} range={refRange} chosen={shownChosen} pinyin={pinyin} wrong={!g.all} cursor={cursor} />}
-        {shownAnswered && <SandhiNote syllables={pinyin} expected={shown.surface} lexical={shown.lexical} />}
+        <EarStage
+          key={shown.id + String(review.index)}
+          answered={shownAnswered && !!g}
+          chart={g && <ReferenceChart item={shown} range={refRange} chosen={shownChosen} pinyin={pinyin} cursor={cursor} />}
+          slots={shown.syllables.length}
+          duration={shown.ref.st.length * shown.ref.hop}
+          cursor={cursor}
+          playing={playing}
+          onPlay={() => void listen()}
+          preview={g && !g.all && !ok ? { chosen: shownChosen as Tone[], exclude: shown.id, syllables: shown.syllables } : null}
+        />
 
         <div className="controls ear-controls">
           <button className="primary" onClick={() => listen(1)} disabled={playing}>▶ Listen</button>
@@ -272,34 +298,31 @@ export function EarBank({ onAnswered, onOverride }: Props) {
           <button onClick={review.back} disabled={!review.canBack}>← Back</button>
           {!shownAnswered && !autoReveal ? (
             <button className="primary" onClick={() => check()} disabled={!complete}>Check</button>
+          ) : shownAnswered ? (
+            <button className="primary" onClick={advance}>Next →</button>
           ) : (
-            <button className="primary" onClick={advance} disabled={!shownAnswered}>Next →</button>
+            <button onClick={() => next(kind, item)}>Skip →</button>
           )}
         </div>
         {g && !g.all && (
-          <button className="link small" onClick={toggleAccept}>{(rv ? !!rv.accepted : accepted) ? 'Undo: count this as incorrect again (M)' : 'I was right — mark my answer as correct (M)'}</button>
+          <button className="link small" onClick={toggleAccept}>{ok ? 'Undo: count this as incorrect again (M)' : 'I was right — mark my answer as correct (M)'}</button>
         )}
+        {shownAnswered && <SandhiNote syllables={pinyin} expected={shown.surface} lexical={shown.lexical} />}
       </section>
 
-      {shownAnswered && g && !g.all && !(rv ? !!rv.accepted : accepted) && (
-        <section className="card">
-          <AnswerPreview key={shown.id + shownChosen.join('')} chosen={shownChosen as Tone[]} exclude={shown.id} syllables={shown.syllables} />
-        </section>
-      )}
-
       <div className="options">
-<p className="muted small">Word length</p>
-<div className="segmented compact" role="tablist" aria-label="Word length">
-        {KINDS.map(([k, label]) => (
-          <button key={k} role="tab" aria-selected={kind === k} className={kind === k ? 'active' : ''} onClick={() => choose(k)}>
-            {label}
-          </button>
-        ))}
+        <p className="muted small">Word length</p>
+        <div className="segmented compact" role="tablist" aria-label="Word length">
+          {KINDS.map(([k, label]) => (
+            <button key={k} role="tab" aria-selected={kind === k} className={kind === k ? 'active' : ''} onClick={() => choose(k)}>
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
-
-</div>
-<details className="card settings">
+      <details className="card settings">
         <summary>Ear settings</summary>
+        <Toggle label="Streaks and points" value={game} onChange={onGame} />
         <Toggle label="Sound effects and vibration for right/wrong" value={sound} onChange={(v) => { setSound(v); setPref('ear.sound', v) }} />
         <Toggle label="Reveal the answer as soon as all tones are chosen" value={autoReveal} onChange={(v) => { setAutoReveal(v); setPref('ear.auto', v) }} />
         <Toggle label="Show the character before answering" value={showHanzi} onChange={(v) => { setShowHanzi(v); setPref('ear.hanzi', v) }} />
@@ -308,18 +331,19 @@ export function EarBank({ onAnswered, onOverride }: Props) {
   )
 }
 
-function ReferenceChart({ item, range, chosen, pinyin, wrong, cursor }: { item: BankItem; range: SpeakerRange; chosen: (Tone | null)[]; pinyin: string[]; wrong: boolean; cursor?: number }) {
+function ReferenceChart({ item, range, chosen, pinyin, cursor }: { item: BankItem; range: SpeakerRange; chosen: (Tone | null)[]; pinyin: string[]; cursor?: number }) {
   const { hop } = item.ref
   const chao = useMemo(() => refChao(item, range), [item, range])
   const { labels, guess, boundaries } = useMemo(
     () => answerOverlay(item.ref.segments, item.surface, chosen, pinyin, hop, 0, chao),
     [item, chosen, pinyin, hop, chao],
   )
-  const lines: PlotLine[] = [{ t: Array.from(chao, (_, i) => i * hop), v: chao, kind: 'ref' }]
-  if (guess) lines.push(guess)
+  const lines = useMemo<PlotLine[]>(() => [{ t: Array.from(chao, (_, i) => i * hop), v: chao, kind: 'ref' as const }, ...(guess ? [guess] : [])], [chao, hop, guess])
   return (
     <>
-      <PitchPlot lines={lines} duration={chao.length * hop} labels={labels} boundaries={boundaries} cursor={cursor} height={wrong ? 300 : 230} />
+      <div className="stage-plot">
+        <PitchPlot lines={lines} duration={chao.length * hop} labels={labels} boundaries={boundaries} cursor={cursor} height="100%" />
+      </div>
       <div className="legend">
         <span className="key ref" /> the speaker's pitch
         {guess && (
@@ -327,8 +351,8 @@ function ReferenceChart({ item, range, chosen, pinyin, wrong, cursor }: { item: 
             <span className="key wrong" /> the tone you picked
           </>
         )}
+        <span className="legend-hint">Space replays</span>
       </div>
-      {wrong && <p className="muted small">Grey is what was really said; red is the tone you picked. Space replays it; the line follows the audio.</p>}
     </>
   )
 }

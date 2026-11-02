@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Tone } from '../analysis/tones'
 import { playUrl, stopPlayback, wavUrl } from '../audio/playback'
 import { synthTones } from '../audio/synth'
@@ -20,7 +20,10 @@ interface Props {
 
 const plain = (s: string) => s.toLowerCase().replace(/ü/g, 'v')
 
-/** "If it were 2-3, it would sound like this": a real recording with that tone pattern, else a synthesized hum. */
+/**
+ * "If it were 2-3, it would sound like this": a real recording with that tone pattern, else a
+ * synthesized hum. Laid out to fill the ear stage; plays once when opened.
+ */
 export function AnswerPreview({ chosen, exclude, syllables }: Props) {
   const [manifest, setManifest] = useState<Manifest | null>(null)
   const [round, setRound] = useState(0)
@@ -55,8 +58,8 @@ export function AnswerPreview({ chosen, exclude, syllables }: Props) {
   const sharedCount = item && syllables ? item.syllables.filter((s, k) => plain(s) === plain(syllables[k] ?? '')).length : 0
   const range = manifest ? Object.values(manifest.speakers)[0].range : null
 
-  const play = async () => {
-    if (!manifest || !range) return
+  const play = useCallback(async () => {
+    if (!range) return
     const mine = ++latest.current
     setPlaying(true)
     try {
@@ -66,47 +69,54 @@ export function AnswerPreview({ chosen, exclude, syllables }: Props) {
       // ignore: nothing useful to show for a failed preview
     }
     if (mine === latest.current) setPlaying(false)
-  }
+  }, [item, range, chosen])
+
+  // Play as soon as the tab opens, and again for each "another".
+  const autoplayed = useRef(-1)
+  useEffect(() => {
+    if (range && autoplayed.current !== round) {
+      autoplayed.current = round
+      void play()
+    }
+  }, [range, round, play])
 
   if (!manifest || !range) return null
   const label = chosen.join('-')
   const speaker = item ? manifest.speakers[item.speaker].range : range
 
   return (
-    <div className="preview">
-      <h3>{isWritten ? `A word written ${label}` : `Your answer (${label}) sounds like this`}</h3>
-      {item ? (
-        <>
-          {isWritten && (
-            <p className="small">
-              Two 3rd tones in a row are never pronounced 3-3: the first becomes a 2nd tone, so there is no recording of a spoken {label}.
-              This word is <em>written</em> {label}, and this is how it really sounds.
-            </p>
-          )}
-          <p>
+    <div className="stage-preview">
+      <div className="preview-head">
+        {item ? (
+          <span className="preview-word">
             <span className="hanzi-sm">{item.hanzi}</span>{' '}
             <span className="pinyin">
               {marked(item.syllables, item.surface).map((s, i) => (
                 <span key={i} className={`t${item.surface[i]}`}>{s} </span>
               ))}
             </span>
-          </p>
-          {syllables && sharedCount > 0 && (
-            <p className="muted small">
-              {sharedCount === item.syllables.length && sharedCount === syllables.length
-                ? 'Same syllables as the word you heard, with your tones.'
-                : 'Shares some syllables with the word you heard.'}
-            </p>
+          </span>
+        ) : (
+          <span className="muted small">Synthesized hum of {label}</span>
+        )}
+        <span className="preview-btns">
+          <button className="primary" onClick={play} disabled={playing} aria-label={`Play ${label}`}>▶</button>
+          {pool.length > 1 && (
+            <button onClick={() => setRound((r) => r + 1)} disabled={playing} aria-label={`Another ${label}`} title={`Another ${label}`}>↻</button>
           )}
-          <PreviewChart item={item} range={speaker} cursor={cursor} />
-        </>
-      ) : (
-        <p className="muted small">No recording has this exact pattern, so this is a synthesized hum of the tone shapes.</p>
-      )}
-      <div className="controls ear-controls">
-        <button className="primary" onClick={play} disabled={playing}>▶ Play {label}</button>
-        {pool.length > 1 && (
-          <button onClick={() => setRound((r) => r + 1)} disabled={playing}>Another {label}</button>
+        </span>
+      </div>
+      <div className="stage-plot">
+        {item ? <PreviewChart item={item} range={speaker} cursor={cursor} /> : <p className="muted small">No recording has this exact pattern.</p>}
+      </div>
+      <div className="legend">
+        {isWritten ? (
+          <>Spoken 3-3 doesn't exist (the first 3 becomes 2); this word is <em>written</em> {label}.</>
+        ) : (
+          <>
+            <span className="key wrong" /> a word with your tones ({label})
+            {sharedCount > 0 && sharedCount === item?.syllables.length && sharedCount === syllables?.length ? ' · same syllables' : ''}
+          </>
         )}
       </div>
     </div>
@@ -122,6 +132,6 @@ function PreviewChart({ item, range, cursor }: { item: BankItem; range: { lo: nu
     [item, pinyin, hop],
   )
   const boundaries = useMemo(() => item.ref.segments.slice(1).map((s) => s[0] * hop), [item, hop])
-  const lines: PlotLine[] = [{ t: Array.from(chao, (_, i) => i * hop), v: chao, kind: 'wrong' }]
-  return <PitchPlot lines={lines} duration={chao.length * hop} labels={labels} boundaries={boundaries} cursor={cursor} height={170} />
+  const lines = useMemo<PlotLine[]>(() => [{ t: Array.from(chao, (_, i) => i * hop), v: chao, kind: 'wrong' }], [chao, hop])
+  return <PitchPlot lines={lines} duration={chao.length * hop} labels={labels} boundaries={boundaries} cursor={cursor} height="100%" />
 }

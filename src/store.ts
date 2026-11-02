@@ -26,6 +26,14 @@ interface Stored {
   earCombos?: Record<string, EarStat>
   /** "expected>chosen" → count, e.g. "3>2". */
   earConfusions?: Record<string, number>
+  /** Ear gamification: points, answers per local day (YYYY-MM-DD), best combo. */
+  earGame?: EarGame
+}
+
+export interface EarGame {
+  xp: number
+  days: Record<string, number>
+  bestCombo: number
 }
 
 function load(): Stored {
@@ -106,5 +114,17 @@ export function removeEarConfusion(key: string) {
   if (n > 0) next[key] = n
   else delete next[key]
   state.earConfusions = next
+  save()
+}
+
+export const getEarGame = (): EarGame => state.earGame ?? { xp: 0, days: {}, bestCombo: 0 }
+/** Record one answer for today and add points; also used with `answers = 0` to adjust points (overrule). */
+export function addEarGame(day: string, points: number, answers: number, combo = 0) {
+  const g = getEarGame()
+  state.earGame = {
+    xp: Math.max(0, g.xp + points),
+    days: answers ? { ...g.days, [day]: (g.days[day] ?? 0) + answers } : g.days,
+    bestCombo: Math.max(g.bestCombo, combo),
+  }
   save()
 }

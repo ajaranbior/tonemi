@@ -32,7 +32,8 @@ interface Props {
   labels?: PlotLabel[]
   /** Moving playhead, seconds. */
   cursor?: number
-  height?: number
+  /** Pixels, or any CSS height such as '100%'. */
+  height?: number | string
 }
 
 const Y_MIN = 0.3

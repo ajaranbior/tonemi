@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Tone } from '../analysis/tones'
 import type { Grade } from '../ear/adapt'
 import { AnswerPreview, type PreviewVoice } from './AnswerPreview'
@@ -26,6 +26,15 @@ interface StageProps {
 export function EarStage({ answered, chart, slots, duration, cursor, playing, onPlay, preview }: StageProps) {
   const [tab, setTab] = useState<'speaker' | 'yours'>('speaker')
   const yours = answered && !!preview && tab === 'yours'
+  // Coming back from "Your answer" replays what was said (the preview autoplays the other way).
+  // In an effect, not the click handler, so it starts after the preview's unmount has stopped its audio.
+  const prevTab = useRef(tab)
+  const play = useRef(onPlay)
+  play.current = onPlay
+  useEffect(() => {
+    if (prevTab.current === 'yours' && tab === 'speaker') play.current()
+    prevTab.current = tab
+  }, [tab])
   return (
     <div className="stage">
       {answered && preview && (

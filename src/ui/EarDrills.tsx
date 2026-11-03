@@ -84,6 +84,10 @@ export function EarContrast({ onAnswered }: Pick<EarProps, 'onAnswered'>) {
   useEffect(() => {
     current.current = q
   }, [q])
+  /** Answered questions, so Q / ← can step back to look and listen again. */
+  const [history, setHistory] = useState<{ q: ContrastQ; picked: Tone; otherUrl: string | null }[]>([])
+  const [view, setView] = useState<number | null>(null)
+  const recorded = useRef<ContrastQ | null>(null)
 
   const next = useCallback(
     (play = true) => {
@@ -101,6 +105,12 @@ export function EarContrast({ onAnswered }: Pick<EarProps, 'onAnswered'>) {
         if (speakable(flipped)) target = flipped
       }
       last.current = word.id
+      if (q && picked !== null && recorded.current !== q) {
+        recorded.current = q
+        const done = { q, picked, otherUrl }
+        setHistory((h) => [...h, done].slice(-50))
+      }
+      setView(null)
       const voiced = pickVoice(manifest, word)
       const mine = ++token.current
       stopPlayback()
@@ -112,15 +122,19 @@ export function EarContrast({ onAnswered }: Pick<EarProps, 'onAnswered'>) {
         setQ({ item, at, other: swap(item.surface[at]) })
       })
     },
-    [manifest, pair, fresh, retoned],
+    [manifest, pair, fresh, retoned, q, picked, otherUrl],
   )
 
   useEffect(() => {
     if (manifest) next(false)
   }, [manifest, pairKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const shown = view !== null ? history[view] : q ? { q, picked, otherUrl } : null
+  const shownQ = shown?.q ?? null
+
   const listen = useCallback(
     async (url?: string) => {
+      const q = shownQ
       if (!q) return
       const mine = ++token.current
       setPlaying(true)
@@ -132,7 +146,7 @@ export function EarContrast({ onAnswered }: Pick<EarProps, 'onAnswered'>) {
       }
       if (mine === token.current) setPlaying(false)
     },
-    [q, jitter],
+    [shownQ, jitter],
   )
 
   useEffect(() => {
@@ -145,7 +159,7 @@ export function EarContrast({ onAnswered }: Pick<EarProps, 'onAnswered'>) {
 
   const answer = useCallback(
     (tone: Tone) => {
-      if (!q || picked !== null || !manifest) return
+      if (!q || picked !== null || !manifest || view !== null) return
       const real = q.item.surface[q.at]
       const ok = tone === real
       setPicked(tone)
@@ -169,35 +183,62 @@ export function EarContrast({ onAnswered }: Pick<EarProps, 'onAnswered'>) {
         }
       })
     },
-    [q, picked, manifest, onAnswered, sound, autoAB],
+    [q, picked, manifest, onAnswered, sound, autoAB, view],
   )
+
+  const back = useCallback(() => {
+    const at = view ?? history.length
+    if (at > 0) {
+      ++token.current
+      stopPlayback()
+      setPlaying(false)
+      setView(at - 1)
+    }
+  }, [view, history.length])
+  /** Toward the present; from the live question once answered, on to a new one. */
+  const forward = useCallback(() => {
+    if (view !== null) {
+      ++token.current
+      stopPlayback()
+      setPlaying(false)
+      setView(view + 1 < history.length ? view + 1 : null)
+    } else if (picked !== null) next()
+  }, [view, history.length, picked, next])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || !q) return
-      if (e.key === 'Enter' || e.key === 'ArrowRight') {
-        if (picked !== null) next()
+      if (e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'e' || e.key === 'E') {
+        e.preventDefault()
+        forward()
+      } else if (e.key === 'ArrowLeft' || e.key === 'q' || e.key === 'Q') {
+        e.preventDefault()
+        back()
       } else if (e.key === ' ' || e.key === 'r' || e.key === 'R') {
         e.preventDefault()
         if (!e.repeat) void listen()
-      } else if (picked === null && (Number(e.key) === pair[0] || Number(e.key) === pair[1])) {
+      } else if (picked === null && view === null && (Number(e.key) === pair[0] || Number(e.key) === pair[1])) {
         answer(Number(e.key) as Tone)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [q, picked, next, listen, answer, pair])
+  }, [q, picked, view, forward, back, listen, answer, pair])
 
   if (error) return <div className="card error"><p>{error}</p></div>
-  if (!manifest || !q) return <div className="card">Loading word bank…</div>
+  if (!manifest || !shown || !shownQ) return <div className="card">Loading word bank…</div>
 
-  const { item, at } = q
+  const { item, at, other } = shownQ
+  const shownPicked = shown.picked
+  const shownOther = shown.otherUrl
   const range = manifest.speakers[item.speaker].range
-  const answered = picked !== null
+  const answered = shownPicked !== null
   const real = item.surface[at]
-  const ok = picked === real
+  // The pair asked (a past question may have used another pair).
+  const asked = [real, other].sort() as [Tone, Tone]
+  const ok = shownPicked === real
   const pinyin = marked(item.syllables, item.surface)
-  const chosen = item.surface.map((t, k) => (k === at ? (picked ?? t) : t))
+  const chosen = item.surface.map((t, k) => (k === at ? (shownPicked ?? t) : t))
   const g = answered ? { correct: item.surface.map((_, k) => k !== at || ok), all: ok } : null
 
   return (
@@ -217,10 +258,11 @@ export function EarContrast({ onAnswered }: Pick<EarProps, 'onAnswered'>) {
               <div className="hanzi muted" aria-label="Word hidden">？</div>
             )}
           </div>
-          {g && <ResultChip key={item.id + String(picked)} grade={g} />}
+          {view !== null && <div className="review-slot"><span className="review-pill">↩ Review {view + 1} of {history.length}</span></div>}
+          {g && <ResultChip key={item.id + String(shownPicked)} grade={g} />}
         </div>
         <EarStage
-          key={item.id + item.speaker}
+          key={item.id + item.speaker + String(view)}
           answered={answered}
           chart={answered && <ReferenceChart item={item} range={range} chosen={chosen} pinyin={pinyin} cursor={cursor} />}
           slots={item.syllables.length}
@@ -234,13 +276,13 @@ export function EarContrast({ onAnswered }: Pick<EarProps, 'onAnswered'>) {
         </div>
         <h3 className="ear-q">
           {item.syllables.length > 1 ? `${ORDINAL[at]} of ${item.syllables.length} syllables: ` : ''}
-          {toneName(pair[0])} or {toneName(pair[1])}?
+          {toneName(asked[0])} or {toneName(asked[1])}?
         </h3>
         <div className="ab-choices">
-          {pair.map((t) => (
+          {asked.map((t) => (
             <button
               key={t}
-              className={`tone-btn big t${t} ${answered ? (t === real ? 'ok' : t === picked ? 'wrong' : '') : ''}`}
+              className={`tone-btn big t${t} ${answered ? (t === real ? 'ok' : t === shownPicked ? 'wrong' : '') : ''}`}
               disabled={answered}
               onClick={() => answer(t)}
             >
@@ -253,7 +295,7 @@ export function EarContrast({ onAnswered }: Pick<EarProps, 'onAnswered'>) {
           <div className="compare-row">
             <span className="muted small">Compare the same recording:</span>
             <button onClick={() => listen(item.url)} disabled={playing}>▶ as {toneName(real)} (real)</button>
-            <button onClick={() => otherUrl && listen(otherUrl)} disabled={playing || !otherUrl}>▶ as {toneName(q.other)}</button>
+            <button onClick={() => shownOther && listen(shownOther)} disabled={playing || !shownOther}>▶ as {toneName(other)}</button>
           </div>
         )}
         {answered && item.from && (
@@ -262,9 +304,10 @@ export function EarContrast({ onAnswered }: Pick<EarProps, 'onAnswered'>) {
           </p>
         )}
         <div className="nav-row">
-          <span />
-          {answered ? <button className="primary" onClick={() => next()}>Next →</button> : <button onClick={() => next()}>Skip →</button>}
+          <button onClick={back} disabled={(view ?? history.length) === 0}>← Back</button>
+          {answered ? <button className="primary" onClick={forward}>Next →</button> : <button onClick={() => next()}>Skip →</button>}
         </div>
+        <p className="muted small keys">Keys: {asked[0]} / {asked[1]} answer · Space replay · Q ← previous · E → Enter next</p>
       </section>
       <div className="options">
         <p className="muted small">Tone pair{suggested.join('') === pairKey ? ' (your most common mix-up)' : ''}</p>

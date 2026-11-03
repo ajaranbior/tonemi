@@ -1,4 +1,13 @@
+import { useEffect, useState } from 'react'
+import { loadManifest } from '../bank/load'
+import type { Manifest } from '../bank/types'
+
 export function AboutPage() {
+  const [manifest, setManifest] = useState<Manifest | null>(null)
+  useEffect(() => {
+    loadManifest().then(setManifest, () => {})
+  }, [])
+  const community = Object.values(manifest?.speakers ?? {}).filter((s) => !s.tts && s.source.includes('wikimedia.org'))
   return (
     <div className="page">
       <section className="card">
@@ -19,6 +28,15 @@ export function AboutPage() {
             <a href="https://github.com/hugolpz/audio-cmn" target="_blank" rel="noreferrer">audio-cmn</a> by Hugo Lopez —{' '}
             <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noreferrer">CC BY-SA</a>.
           </li>
+          {community.length > 0 && (
+            <li>
+              More native speakers, recorded for{' '}
+              <a href="https://lingualibre.org" target="_blank" rel="noreferrer">Lingua Libre</a> and shared on{' '}
+              <a href="https://commons.wikimedia.org/wiki/Category:Lingua_Libre_pronunciation-cmn" target="_blank" rel="noreferrer">Wikimedia Commons</a>{' '}
+              ({[...new Set(community.map((s) => s.license))].join(', ')}): {community.map((s) => s.short ?? s.name).join(', ')}. Only clips whose pitch matches the
+              expected tones are kept; each voice can be switched off in Drill/Ear settings.
+            </li>
+          )}
           <li>
             Extra voices (switchable in Drill/Ear settings): Microsoft Edge neural text-to-speech voices (Xiaoxiao, Xiaoyi, Yunxia,
             Yunxi, Yunjian), generated with <a href="https://github.com/rany2/edge-tts" target="_blank" rel="noreferrer">edge-tts</a>{' '}

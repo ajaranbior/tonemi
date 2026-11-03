@@ -11,7 +11,8 @@
     "test": "vitest run",
     "build-bank": "tsx scripts/build-bank.ts",
     "dev:https": "HTTPS=1 vite --host",
-    "build-voices": "tsx scripts/build-voices.ts"
+    "build-voices": "tsx scripts/build-voices.ts",
+    "build-commons": "tsx scripts/build-commons.ts"
   },
   "dependencies": {
     "pinyin-pro": "^3.29.5",

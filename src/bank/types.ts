@@ -40,6 +40,8 @@ export interface RefPitch {
 export interface Recording {
   speaker: string
   audio: string
+  /** Where the recording came from (its Wikimedia Commons file page), for attribution. */
+  source?: string
   ref: RefPitch
 }
 

@@ -43,6 +43,14 @@ A personal Mandarin tone **production and recognition** trainer. Runs entirely i
 
 See [docs/DESIGN.md](docs/DESIGN.md) for the concept and roadmap.
 
+## More real voices
+
+`npm run build-commons` adds native speakers from [Lingua Libre](https://lingualibre.org) (Wikimedia Commons,
+CC BY-SA) to the word bank as extra voices: it searches Commons for each bank word, downloads the recordings,
+keeps only clips whose pitch matches the expected tones (same check as the other voices), and credits each
+speaker in the app. `LIST=1` shows the speakers found; `SPEAKERS=` / `EXCLUDE=` pick whose voices to use.
+Needs `ffmpeg` and `curl`, and network access to commons.wikimedia.org.
+
 ## Run
 
 ```bash

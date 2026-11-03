@@ -37,32 +37,69 @@ export function pickWeighted<T>(items: T[], weight: (t: T) => number, rand: () =
   return items[items.length - 1]
 }
 
-/** Combos are chosen first (by weakness), then an item within the combo, so rare combos aren't drowned out. */
-export function pickByCombo<T>(items: T[], comboOf: (t: T) => string, stats: Record<string, EarStat>, rand: () => number = Math.random): T | undefined {
+/**
+ * Combos are chosen first (by weakness), then an item within the combo, so rare combos aren't drowned
+ * out. `itemWeight` biases the second step (e.g. toward words heard least); uniform by default.
+ */
+export function pickByCombo<T>(
+  items: T[],
+  comboOf: (t: T) => string,
+  stats: Record<string, EarStat>,
+  rand: () => number = Math.random,
+  itemWeight?: (t: T) => number,
+): T | undefined {
   const combos = [...new Set(items.map(comboOf))]
   const combo = pickWeighted(combos, (c) => comboWeight(stats[c]), rand)
   const pool = items.filter((i) => comboOf(i) === combo)
-  return pool[Math.floor(rand() * pool.length)]
+  return itemWeight ? pickWeighted(pool, itemWeight, rand) : pool[Math.floor(rand() * pool.length)]
 }
 
-/** Missed items come back after a few other trials until they are answered correctly. */
+/** Item weight from how often it was answered: a never-heard word is 9× as likely as one heard twice. */
+export const freshWeight = (timesHeard: number) => 1 / (1 + timesHeard) ** 2
+
+/**
+ * Missed items come back after a few other trials until they are answered correctly. With `pattern`
+ * set, what comes back is the tone pattern (in another word), and `id` is the word that was missed.
+ */
 export interface Retry {
   id: string
   due: number
+  pattern?: string
 }
 
 export const RETRY_GAP = 3
 
-export function scheduleRetry(queue: Retry[], id: string, trial: number): Retry[] {
-  return [...queue.filter((r) => r.id !== id), { id, due: trial + RETRY_GAP }]
+export function scheduleRetry(queue: Retry[], id: string, trial: number, pattern?: string): Retry[] {
+  const rest = queue.filter((r) => (pattern ? r.pattern !== pattern : r.id !== id))
+  return [...rest, pattern ? { id, due: trial + RETRY_GAP, pattern } : { id, due: trial + RETRY_GAP }]
 }
 
-export function clearRetry(queue: Retry[], id: string): Retry[] {
-  return queue.filter((r) => r.id !== id)
+/** Drop the retry for a word, or for a tone pattern when `pattern` is given. */
+export function clearRetry(queue: Retry[], id: string, pattern?: string): Retry[] {
+  return queue.filter((r) => r.id !== id && (pattern === undefined || r.pattern !== pattern))
 }
 
 export function dueRetry(queue: Retry[], trial: number, avail: (id: string) => boolean): string | undefined {
-  return queue.find((r) => r.due <= trial && avail(r.id))?.id
+  return queue.find((r) => !r.pattern && r.due <= trial && avail(r.id))?.id
+}
+
+/** The first due pattern retry that `avail` can serve. */
+export function duePattern(queue: Retry[], trial: number, avail: (r: Retry) => boolean): Retry | undefined {
+  return queue.find((r) => r.pattern && r.due <= trial && avail(r))
+}
+
+/** Unordered tone pair of the most frequent confusion, e.g. [2, 3]; null when there are none. */
+export function topPair(conf: Record<string, number>): [Tone, Tone] | null {
+  const totals = new Map<string, number>()
+  for (const [k, c] of Object.entries(conf)) {
+    const a = Number(k[0])
+    const b = Number(k[2])
+    if (a === b) continue
+    const key = a < b ? `${a}${b}` : `${b}${a}`
+    totals.set(key, (totals.get(key) ?? 0) + c)
+  }
+  const best = [...totals].sort((x, y) => y[1] - x[1])[0]
+  return best ? [Number(best[0][0]) as Tone, Number(best[0][1]) as Tone] : null
 }
 
 export interface Grade {
@@ -81,4 +118,12 @@ export function topConfusions(conf: Record<string, number>, n = 3): [Tone, Tone,
     .map(([k, c]) => [Number(k[0]) as Tone, Number(k[2]) as Tone, c] as [Tone, Tone, number])
     .sort((a, b) => b[2] - a[2])
     .slice(0, n)
+}
+
+/** How much of the word to play before answering, from accuracy on its tone pattern (melody-first mode). */
+export type Melody = 'hum' | 'muffled' | 'full'
+
+export function melodyLevel(stat: EarStat | undefined): Melody {
+  if (!stat || stat.n < 3) return 'muffled'
+  return stat.ema < 0.6 ? 'hum' : stat.ema < 0.85 ? 'muffled' : 'full'
 }

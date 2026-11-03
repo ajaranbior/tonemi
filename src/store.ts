@@ -28,6 +28,21 @@ interface Stored {
   earConfusions?: Record<string, number>
   /** Ear gamification: points, answers per local day (YYYY-MM-DD), best combo. */
   earGame?: EarGame
+  /** Ear answers per recording key (a word, or a word moved to other tones): count and last time (ms). */
+  earSeen?: Record<string, Seen>
+  /** Accuracy on first listens vs repeats. */
+  earFresh?: FreshStats
+}
+
+export interface Seen {
+  n: number
+  at: number
+}
+
+/** Whole-answer results split by whether the word was new to you. */
+export interface FreshStats {
+  first: { n: number; ok: number }
+  repeat: { n: number; ok: number }
 }
 
 export interface EarGame {
@@ -106,6 +121,7 @@ export function addEarConfusion(key: string) {
 export function resetEar() {
   state.earCombos = {}
   state.earConfusions = {}
+  state.earFresh = undefined
   save()
 }
 export function removeEarConfusion(key: string) {
@@ -126,5 +142,37 @@ export function addEarGame(day: string, points: number, answers: number, combo =
     days: answers ? { ...g.days, [day]: (g.days[day] ?? 0) + answers } : g.days,
     bestCombo: Math.max(g.bestCombo, combo),
   }
+  save()
+}
+
+/** A word counts as new again when it was last answered this long ago. */
+export const FRESH_AFTER_MS = 30 * 24 * 3600 * 1000
+
+export const getEarSeen = () => state.earSeen ?? {}
+export const getEarFresh = (): FreshStats => state.earFresh ?? { first: { n: 0, ok: 0 }, repeat: { n: 0, ok: 0 } }
+
+/** True when `key` has never been answered (or not for a month). */
+export function isFresh(key: string, now = Date.now()): boolean {
+  const s = state.earSeen?.[key]
+  return !s || now - s.at > FRESH_AFTER_MS
+}
+
+/** Count one answer to `key`; returns whether it was a first listen. */
+export function recordEarSeen(key: string, correct: boolean, now = Date.now()): boolean {
+  const first = isFresh(key, now)
+  const s = state.earSeen?.[key]
+  state.earSeen = { ...state.earSeen, [key]: { n: (s?.n ?? 0) + 1, at: now } }
+  const f = getEarFresh()
+  const bucket = first ? 'first' : 'repeat'
+  state.earFresh = { ...f, [bucket]: { n: f[bucket].n + 1, ok: f[bucket].ok + (correct ? 1 : 0) } }
+  save()
+  return first
+}
+
+/** The learner overruled an answer: move one result between right and wrong. */
+export function adjustEarFresh(first: boolean, delta: 1 | -1) {
+  const f = getEarFresh()
+  const bucket = first ? 'first' : 'repeat'
+  state.earFresh = { ...f, [bucket]: { ...f[bucket], ok: Math.max(0, Math.min(f[bucket].n, f[bucket].ok + delta)) } }
   save()
 }

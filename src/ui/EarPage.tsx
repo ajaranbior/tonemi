@@ -2,8 +2,11 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { topConfusions } from '../ear/adapt'
 import { addDays, DAILY_GOAL, dailyStreak, dayKey, pointsFor, POINTS, sinceMonday } from '../ear/game'
 import { navigate, useRoute } from '../route'
-import { addEarGame, getEarCombos, getEarConfusions, getEarGame, getPref, resetEar, setPref } from '../store'
+import { addEarGame, getEarCombos, getEarConfusions, getEarFresh, getEarGame, getPref, resetEar, setPref } from '../store'
 import { EarBank, type AnswerExtra } from './EarBank'
+import { EarContrast, EarSameDiff } from './EarDrills'
+import { Experiments } from './Experiments'
+import { useFlag } from '../flags'
 import type { Tone } from '../analysis/tones'
 import { ToneChip, ToneGlyph } from './ToneGlyph'
 
@@ -12,6 +15,7 @@ const EarClips = lazy(() => import('./EarClips'))
 
 type Mode = 'words' | 'video' | 'anki'
 const MODES: Mode[] = ['words', 'video', 'anki']
+type Exercise = 'name' | 'contrast' | 'sameDiff'
 
 export function EarPage() {
   const route = useRoute()
@@ -28,6 +32,14 @@ export function EarPage() {
   /** Latest points gained, keyed so the float animation restarts. */
   const [gain, setGain] = useState<{ n: number; pts: number; comeback: boolean } | null>(null)
   const [toast, setToast] = useState<{ n: number; text: string } | null>(null)
+  const contrastOn = useFlag('contrast')
+  const sameDiffOn = useFlag('sameDiff')
+  const [exerciseRaw, setExercise] = useState<Exercise>(() => getPref('ear.exercise', 'name') as Exercise)
+  const exercise: Exercise = (exerciseRaw === 'contrast' && contrastOn) || (exerciseRaw === 'sameDiff' && sameDiffOn) ? exerciseRaw : 'name'
+  const pickExercise = (e: Exercise) => {
+    setExercise(e)
+    setPref('ear.exercise', e)
+  }
   const toastTimer = useRef<number | undefined>(undefined)
 
   const showToast = useCallback((text: string) => {
@@ -78,8 +90,32 @@ export function EarPage() {
     <div className="page">
       {game && <GameBar tick={tick} combo={combo} gain={gain} />}
 
+      {mode === 'words' && (contrastOn || sameDiffOn) && (
+        <div className="segmented compact exercise-pick" role="tablist" aria-label="Exercise">
+          {(
+            [
+              ['name', 'Name the tones', true],
+              ['contrast', 'A or B?', contrastOn],
+              ['sameDiff', 'Same or different?', sameDiffOn],
+            ] as const
+          )
+            .filter(([, , on]) => on)
+            .map(([e, label]) => (
+              <button key={e} role="tab" aria-selected={exercise === e} className={exercise === e ? 'active' : ''} onClick={() => pickExercise(e)}>
+                {label}
+              </button>
+            ))}
+        </div>
+      )}
+
       {mode === 'words' ? (
-        <EarBank onAnswered={answered} onOverride={overridden} game={game} onGame={toggleGame} />
+        exercise === 'contrast' ? (
+          <EarContrast onAnswered={answered} />
+        ) : exercise === 'sameDiff' ? (
+          <EarSameDiff onAnswered={answered} />
+        ) : (
+          <EarBank onAnswered={answered} onOverride={overridden} game={game} onGame={toggleGame} />
+        )
       ) : (
         <Suspense fallback={<div className="card">Loading…</div>}>
           <EarClips key={mode} source={mode} onAnswered={answered} onOverride={overridden} game={game} onGame={toggleGame} />
@@ -102,6 +138,7 @@ export function EarPage() {
       </div>
 
       <EarStats session={session} tick={tick} onReset={() => { resetEar(); setTick((t) => t + 1) }} />
+      <Experiments />
 
       {toast && (
         <div key={toast.n} className="toast" role="status">
@@ -185,6 +222,8 @@ function EarStats({ session, tick, onReset }: { session: { n: number; ok: number
     .sort((a, b) => a[1].ema - b[1].ema || b[1].n - a[1].n)
   const combos = showAll ? all : all.slice(0, 6)
   const conf = topConfusions(getEarConfusions(), 5)
+  const showFresh = useFlag('freshStats')
+  const fresh = getEarFresh()
   if (!session.n && !all.length && !conf.length) return null
   return (
     <details className="card settings">
@@ -197,6 +236,37 @@ function EarStats({ session, tick, onReset }: { session: { n: number; ok: number
           <h3>Practice days</h3>
           <p className="muted small">Last five weeks, Monday first; darker means more answers (goal: {DAILY_GOAL} a day).</p>
           <PracticeCalendar />
+        </section>
+      )}
+
+      {showFresh && fresh.first.n + fresh.repeat.n > 0 && (
+        <section className="stat-block">
+          <h3>First listen vs repeat</h3>
+          <p className="muted small">
+            Right answers on recordings you hear for the first time (or not for a month) vs ones you have answered before. First listens
+            are your real score; if repeats are much higher, you are partly remembering recordings.
+          </p>
+          <ul className="stat-list">
+            {(
+              [
+                ['First listen', fresh.first],
+                ['Repeat', fresh.repeat],
+              ] as const
+            ).map(([label, b]) => {
+              const pct = b.n ? Math.round((100 * b.ok) / b.n) : 0
+              return (
+                <li key={label} className="stat-row">
+                  <span className="stat-pattern small">
+                    {label} <span className="muted">({b.n})</span>
+                  </span>
+                  <span className="stat-bar" role="img" aria-label={`${pct}% right`}>
+                    <span style={{ width: `${Math.max(pct, 3)}%`, background: gradeColor(pct) }} />
+                  </span>
+                  <strong className="stat-pct" style={{ color: b.n ? gradeColor(pct) : undefined }}>{b.n ? `${pct}%` : '–'}</strong>
+                </li>
+              )
+            })}
+          </ul>
         </section>
       )}
 

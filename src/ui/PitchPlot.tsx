@@ -8,6 +8,8 @@ export interface PlotLine {
   v: ArrayLike<number>
   /** 'wrong' (red) marks the tone the learner picked when it was incorrect. */
   kind: 'ref' | 'user' | 'live' | 'wrong'
+  /** Draw straight through time gaps (hand-drawn strokes); NaN still breaks the line. */
+  joined?: boolean
 }
 
 export interface PlotLabel {
@@ -40,6 +42,8 @@ interface Props {
    * Plot time t is `offset + t` seconds into `samples` (16 kHz). Null while it loads.
    */
   scrub?: { samples: Float32Array | null; offset: number }
+  /** Drawing mode: pointer strokes on the plot report points (time s, Chao); `start` begins a stroke. */
+  draw?: (pt: { t: number; v: number }, start: boolean) => void
 }
 
 interface Probe {
@@ -51,7 +55,7 @@ const Y_MIN = 0.3
 const Y_MAX = 5.7
 
 /** Chao-scale pitch plot (1 = bottom of your range, 5 = top). */
-export function PitchPlot({ lines, duration, boundaries = [], labels = [], cursor, height = 220, scrub }: Props) {
+export function PitchPlot({ lines, duration, boundaries = [], labels = [], cursor, height = 220, scrub, draw }: Props) {
   const canvas = useRef<HTMLCanvasElement>(null)
   const size = useRef({ w: 0, h: 0 })
   const [probe, setProbe] = useState<Probe | null>(null)
@@ -86,7 +90,25 @@ export function PitchPlot({ lines, duration, boundaries = [], labels = [], curso
     scrubber?.stop()
     setProbe((p) => (p ? { ...p, held: false } : p))
   }
-  const handlers = scrubber
+  const point = (e: PointerEvent<HTMLCanvasElement>) => {
+    const r = e.currentTarget.getBoundingClientRect()
+    const top = plotTop(labels)
+    const v = Y_MAX - ((e.clientY - r.top - top) / Math.max(1, r.height - top - PLOT_BOTTOM)) * (Y_MAX - Y_MIN)
+    return { t: at(e), v: Math.max(Y_MIN, Math.min(Y_MAX, v)) }
+  }
+  const handlers = draw
+    ? {
+        onPointerDown: (e: PointerEvent<HTMLCanvasElement>) => {
+          if (e.button !== 0) return
+          e.preventDefault()
+          e.currentTarget.setPointerCapture(e.pointerId)
+          draw(point(e), true)
+        },
+        onPointerMove: (e: PointerEvent<HTMLCanvasElement>) => {
+          if (e.currentTarget.hasPointerCapture(e.pointerId)) draw(point(e), false)
+        },
+      }
+    : scrubber
     ? {
         onPointerDown: (e: PointerEvent<HTMLCanvasElement>) => {
           if (e.button !== 0) return
@@ -117,11 +139,11 @@ export function PitchPlot({ lines, duration, boundaries = [], labels = [], curso
   return (
     <canvas
       ref={canvas}
-      className={`pitch-plot${scrubber ? ' scrubbable' : ''}`}
+      className={`pitch-plot${draw ? ' drawable' : scrubber ? ' scrubbable' : ''}`}
       style={{ height }}
       role="img"
-      aria-label={scrubber ? 'Pitch contour. Hold and drag to loop the sound at that point.' : 'Pitch contour'}
-      title={scrubber ? 'Hold and drag to hear the pitch at that point' : undefined}
+      aria-label={draw ? 'Pitch chart: draw the melody you heard' : scrubber ? 'Pitch contour. Hold and drag to loop the sound at that point.' : 'Pitch contour'}
+      title={draw ? 'Draw the pitch you heard' : scrubber ? 'Hold and drag to hear the pitch at that point' : undefined}
       {...handlers}
     />
   )
@@ -129,6 +151,9 @@ export function PitchPlot({ lines, duration, boundaries = [], labels = [], curso
 
 const PLOT_LEFT = 22
 const PLOT_RIGHT = 6
+const PLOT_BOTTOM = 6
+/** Space above the plot for the labels. */
+const plotTop = (labels: PlotLabel[]) => (labels.some((l) => l.target !== undefined && l.ok === false) ? 86 : labels.length ? 52 : 6)
 
 function css(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
@@ -148,8 +173,8 @@ function paint(
   g.clearRect(0, 0, w, h)
 
   const left = PLOT_LEFT
-  const top = labels.some((l) => l.target !== undefined && l.ok === false) ? 86 : labels.length ? 52 : 6
-  const bottom = 6
+  const top = plotTop(labels)
+  const bottom = PLOT_BOTTOM
   const plotH = h - top - bottom
   const x = (t: number) => left + (t / Math.max(duration, 0.1)) * (w - left - PLOT_RIGHT)
   const y = (v: number) => top + ((Y_MAX - v) / (Y_MAX - Y_MIN)) * plotH
@@ -199,7 +224,7 @@ function paint(
       const v = line.v[i]
       const t = line.t[i]
       // Break across NaN and across gaps longer than 50 ms.
-      if (Number.isNaN(v) || (pen && t - lastT > 0.05)) {
+      if (Number.isNaN(v) || (pen && !line.joined && t - lastT > 0.05)) {
         pen = false
         if (Number.isNaN(v)) continue
       }

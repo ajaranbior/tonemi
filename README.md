@@ -35,6 +35,13 @@ A personal Mandarin tone **production and recognition** trainer. Runs entirely i
   away. A preview shows how the cards were read before any audio loads. The first time, Anki asks
   whether to allow the site. Chrome, Edge and Firefox on the computer running Anki; Safari and phones
   can't reach AnkiConnect.
+- **Ear experiments** (Ear → 🧪 Experiments, each a switch): aimed at hearing the pitch instead of
+  remembering recordings. A missed pattern comes back as a *different* word; words heard least come up first;
+  *retoned questions* play a word with its pitch moved to other tones (TD-PSOLA), so knowing the word is no help;
+  every play can vary ±10% in speed and pitch; after a miss the app plays right → yours → right; *melody first*
+  plays weak patterns as a hum of the speaker's real pitch, then muffled, then the full word; you can draw the
+  pitch before answering; two extra exercises, *A or B?* on your most-confused tone pair and *same or
+  different?* on two words; and Progress shows first-listen vs repeat accuracy.
 - **Shadowing** — load your own audio/video + `.srt`/`.vtt`, loop a line, echo
   it or shadow along; the whole-line melody is compared with DTW and scored.
   Subtitles show Mainland surface tones (一/不/3-3 sandhi, neutral tones).

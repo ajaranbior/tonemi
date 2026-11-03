@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { adjustStat, clearRetry, comboWeight, dueRetry, grade, pickByCombo, scheduleRetry, topConfusions, updateStat } from './adapt'
+import { adjustStat, clearRetry, comboWeight, duePattern, dueRetry, freshWeight, grade, pickByCombo, scheduleRetry, topConfusions, topPair, updateStat } from './adapt'
 
 describe('ear adaptation', () => {
   it('moves accuracy toward results and weights weak combos higher', () => {
@@ -43,5 +43,31 @@ describe('ear adaptation', () => {
     expect(grade([2, 3], [2, 4])).toEqual({ correct: [true, false], all: false })
     expect(grade([1], [1]).all).toBe(true)
     expect(topConfusions({ '3>2': 5, '2>3': 2, '4>1': 9 }, 2)).toEqual([[4, 1, 9], [3, 2, 5]])
+  })
+
+  it('brings a missed tone pattern back in another word', () => {
+    let q = scheduleRetry([], 'w1', 5, '21')
+    q = scheduleRetry(q, 'w2', 6, '21') // same pattern missed again: one entry, latest word
+    expect(q).toHaveLength(1)
+    expect(dueRetry(q, 99, () => true)).toBeUndefined() // not a word retry
+    expect(duePattern(q, 8, () => true)).toBeUndefined()
+    expect(duePattern(q, 9, () => true)).toEqual({ id: 'w2', due: 9, pattern: '21' })
+    expect(duePattern(q, 9, () => false)).toBeUndefined()
+    expect(clearRetry(q, '', '21')).toHaveLength(0)
+  })
+
+  it('prefers words heard least within a pattern', () => {
+    const items = ['a', 'b']
+    const heard: Record<string, number> = { a: 0, b: 5 }
+    let seed = 7
+    const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647)
+    let fresh = 0
+    for (let i = 0; i < 400; i++) if (pickByCombo(items, () => 'x', {}, rand, (t) => freshWeight(heard[t])) === 'a') fresh++
+    expect(fresh).toBeGreaterThan(360)
+  })
+
+  it('finds the most confused pair regardless of direction', () => {
+    expect(topPair({ '3>2': 4, '2>3': 3, '4>1': 5 })).toEqual([2, 3])
+    expect(topPair({})).toBeNull()
   })
 })

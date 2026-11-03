@@ -142,6 +142,7 @@ button.link { min-height: 0; padding: 0; border: 0; background: none; color: var
 
 .pitch-plot { width: 100%; display: block; border-radius: 10px; touch-action: pan-y; }
 .pitch-plot.scrubbable { cursor: ew-resize; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.pitch-plot.drawable { cursor: crosshair; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .legend { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--muted); margin-top: 6px; flex-wrap: wrap; }
 .key { display: inline-block; width: 18px; height: 4px; border-radius: 2px; }
 .key.ref { background: var(--ref); opacity: 0.6; height: 6px; }
@@ -246,6 +247,7 @@ button.link { min-height: 0; padding: 0; border: 0; background: none; color: var
 }
 .stage-play span { font-size: 1.2rem; color: var(--accent); }
 .stage-play:disabled { opacity: 0.85; }
+.stage-play.corner { left: auto; right: 8px; top: 8px; transform: none; padding: 6px 12px; font-size: 0.85rem; }
 .stage-preview { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 4px; }
 .preview-head { flex: none; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .preview-word { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -338,3 +340,23 @@ select.text-input { appearance: auto; }
 .anki-table mark { background: color-mix(in srgb, var(--accent) 22%, transparent); color: inherit; border-radius: 3px; padding: 0 1px; }
 .anki-tones { white-space: nowrap; }
 .anki-tones .glyph { vertical-align: middle; }
+
+/* Experiments (feature flags) */
+.toggle.flag { align-items: flex-start; padding: 6px 0; }
+.toggle.flag input { margin-top: 2px; flex: none; }
+.flag-help { display: block; margin-top: 2px; }
+.exercise-pick { margin-bottom: 10px; }
+.tag-retoned { margin-left: 8px; font-size: 0.7rem; font-weight: 600; vertical-align: middle; padding: 2px 6px; border-radius: 999px; background: var(--band-a); color: var(--muted); }
+.retoned-note { margin: 8px 0 0; }
+.ab-status { display: flex; gap: 6px; justify-content: center; margin-top: 6px; color: var(--muted); }
+.ab-status span { padding: 2px 8px; border-radius: 999px; }
+.ab-status span.on { background: color-mix(in srgb, var(--accent) 18%, var(--card)); color: var(--fg); font-weight: 600; }
+.ab-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
+.ab-choices button.big { min-height: 64px; font-size: 1.05rem; font-weight: 600; }
+.ab-choices .tone-btn.big strong { font-size: 1.4rem; }
+.ab-choices button.ok { background: color-mix(in srgb, var(--good) 28%, var(--card)); border-color: var(--good); }
+.ab-choices button.wrong { background: color-mix(in srgb, var(--bad) 22%, var(--card)); border-color: var(--bad); }
+.compare-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+.pair-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 8px 0; }
+.pair-card { min-height: 120px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 8px; }
+.pair-card.on { outline: 2px solid var(--accent); outline-offset: 1px; }

@@ -3,14 +3,15 @@ import { SR } from '../analysis/pitch'
 let current: HTMLAudioElement | null = null
 
 /**
- * Play a URL; resolves when playback ends. Slow rates keep the pitch.
+ * Play a URL; resolves when playback ends. Other rates keep the pitch unless `keepPitch` is false
+ * (then pitch moves with speed, like a tape).
  * `onTime` gets the playback position (s) every frame, then NaN when finished.
  */
-export function playUrl(url: string, rate = 1, onTime?: (t: number) => void): Promise<void> {
+export function playUrl(url: string, rate = 1, onTime?: (t: number) => void, keepPitch = true): Promise<void> {
   stopPlayback()
   const el = new Audio(url)
   el.playbackRate = rate
-  el.preservesPitch = true
+  el.preservesPitch = keepPitch
   current = el
   return new Promise((resolve, reject) => {
     let raf = 0
@@ -59,4 +60,24 @@ export function wavUrl(samples: Float32Array): string {
     v.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true)
   }
   return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }))
+}
+
+/**
+ * Play URLs one after another with `gap` seconds between. `onStep` gets the index being played, then
+ * -1 at the end. Stops early (resolving false) when `alive()` turns false, e.g. the learner moved on.
+ */
+export async function playSequence(urls: string[], alive: () => boolean, onStep?: (i: number) => void, gap = 0.35): Promise<boolean> {
+  for (let i = 0; i < urls.length; i++) {
+    if (!alive()) return false
+    onStep?.(i)
+    try {
+      await playUrl(urls[i])
+    } catch {
+      // skip a clip that fails to play
+    }
+    if (i < urls.length - 1) await new Promise((r) => setTimeout(r, gap * 1000))
+  }
+  const done = alive()
+  if (done) onStep?.(-1)
+  return done
 }

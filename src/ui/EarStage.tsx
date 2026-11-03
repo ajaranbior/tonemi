@@ -18,6 +18,8 @@ interface StageProps {
   preview?: { chosen: Tone[]; exclude?: string; syllables?: string[]; voice?: PreviewVoice } | null
   /** Draw-the-pitch mode: the learner's sketch so far, and how to extend or clear it. */
   sketch?: { line: PlotLine | null; onDraw: (pt: { t: number; v: number }, start: boolean) => void; onClear: () => void }
+  /** One syllable is being asked about: its real time span (s), and the real syllable boundaries to draw with it. */
+  focus?: { span: [number, number]; boundaries: number[] }
 }
 
 /**
@@ -25,7 +27,7 @@ interface StageProps {
  * pitch grid with a playhead); afterwards the chart draws into the same space, so nothing below moves.
  * Key it per trial so the tab resets.
  */
-export function EarStage({ answered, chart, slots, duration, cursor, playing, onPlay, preview, sketch }: StageProps) {
+export function EarStage({ answered, chart, slots, duration, cursor, playing, onPlay, preview, sketch, focus }: StageProps) {
   const [tab, setTab] = useState<'speaker' | 'yours'>('speaker')
   const yours = answered && !!preview && tab === 'yours'
   // Coming back from "Your answer" replays what was said (the preview autoplays the other way).
@@ -51,7 +53,7 @@ export function EarStage({ answered, chart, slots, duration, cursor, playing, on
       )}
       <div className="stage-body" key={answered ? tab : 'question'}>
         {!answered ? (
-          <Placeholder slots={slots} duration={duration} cursor={cursor} playing={playing} onPlay={onPlay} sketch={sketch} />
+          <Placeholder slots={slots} duration={duration} cursor={cursor} playing={playing} onPlay={onPlay} sketch={sketch} focus={focus} />
         ) : yours && preview ? (
           <AnswerPreview chosen={preview.chosen} exclude={preview.exclude} syllables={preview.syllables} voice={preview.voice} />
         ) : (
@@ -62,15 +64,17 @@ export function EarStage({ answered, chart, slots, duration, cursor, playing, on
   )
 }
 
-function Placeholder({ slots, duration, cursor, playing, onPlay, sketch }: { slots: number; duration: number; cursor?: number; playing: boolean; onPlay: () => void; sketch?: StageProps['sketch'] }) {
-  // Evenly spaced dividers hint at the number of syllables without giving anything away.
-  const boundaries = useMemo(() => Array.from({ length: slots - 1 }, (_, i) => (duration * (i + 1)) / slots), [slots, duration])
+function Placeholder({ slots, duration, cursor, playing, onPlay, sketch, focus }: { slots: number; duration: number; cursor?: number; playing: boolean; onPlay: () => void; sketch?: StageProps['sketch']; focus?: StageProps['focus'] }) {
+  // Evenly spaced dividers hint at the number of syllables without giving anything away;
+  // with a focus syllable, the real ones, so the highlighted stretch is where that syllable is heard.
+  const even = useMemo(() => Array.from({ length: slots - 1 }, (_, i) => (duration * (i + 1)) / slots), [slots, duration])
+  const boundaries = focus?.boundaries ?? even
   const line = sketch?.line
   const lines = useMemo(() => (line ? [line] : NO_LINES), [line])
   return (
     <>
       <div className="stage-plot">
-        <PitchPlot lines={lines} duration={duration} boundaries={boundaries} cursor={playing ? cursor : undefined} height="100%" draw={sketch?.onDraw} />
+        <PitchPlot lines={lines} duration={duration} boundaries={boundaries} cursor={playing ? cursor : undefined} height="100%" draw={sketch?.onDraw} focus={focus?.span} />
         <button className={`stage-play${sketch ? ' corner' : ''}`} onClick={onPlay} disabled={playing} aria-label="Listen">
           <span aria-hidden="true">{playing ? '🔊' : '▶'}</span>
           {playing ? 'Listening…' : sketch ? 'Listen' : 'Tap to listen'}
@@ -82,6 +86,10 @@ function Placeholder({ slots, duration, cursor, playing, onPlay, sketch }: { slo
           {sketch.line && (
             <button className="link small" onClick={sketch.onClear}>Clear drawing</button>
           )}
+        </div>
+      ) : focus ? (
+        <div className="legend">
+          <span className="key focus" /> listen for this syllable · the speaker's pitch is drawn after you answer
         </div>
       ) : (
         <div className="legend">The speaker's pitch is drawn here after you answer.</div>

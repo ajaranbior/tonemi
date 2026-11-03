@@ -240,6 +240,12 @@ export function EarContrast({ onAnswered }: Pick<EarProps, 'onAnswered'>) {
   const pinyin = marked(item.syllables, item.surface)
   const chosen = item.surface.map((t, k) => (k === at ? (shownPicked ?? t) : t))
   const g = answered ? { correct: item.surface.map((_, k) => k !== at || ok), all: ok } : null
+  // Only multi-syllable words need to point at the syllable asked about.
+  const { hop, segments } = item.ref
+  const focus =
+    segments.length > 1 && segments[at]
+      ? { span: [segments[at][0] * hop, segments[at][1] * hop] as [number, number], boundaries: segments.slice(1).map((s) => s[0] * hop) }
+      : undefined
 
   return (
     <>
@@ -264,7 +270,8 @@ export function EarContrast({ onAnswered }: Pick<EarProps, 'onAnswered'>) {
         <EarStage
           key={item.id + item.speaker + String(view)}
           answered={answered}
-          chart={answered && <ReferenceChart item={item} range={range} chosen={chosen} pinyin={pinyin} cursor={cursor} />}
+          chart={answered && <ReferenceChart item={item} range={range} chosen={chosen} pinyin={pinyin} cursor={cursor} focus={focus?.span} />}
+          focus={focus}
           slots={item.syllables.length}
           duration={item.ref.st.length * item.ref.hop}
           cursor={cursor}

@@ -502,7 +502,7 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
   )
 }
 
-export function ReferenceChart({ item, range, chosen, pinyin, cursor, sketch }: { item: EarItem; range: SpeakerRange; chosen: (Tone | null)[]; pinyin: string[]; cursor?: number; sketch?: PlotLine | null }) {
+export function ReferenceChart({ item, range, chosen, pinyin, cursor, sketch, focus }: { item: EarItem; range: SpeakerRange; chosen: (Tone | null)[]; pinyin: string[]; cursor?: number; sketch?: PlotLine | null; focus?: [number, number] }) {
   const { hop } = item.ref
   const chao = useMemo(() => refChao(item, range), [item, range])
   const { labels, guess, boundaries } = useMemo(
@@ -517,7 +517,7 @@ export function ReferenceChart({ item, range, chosen, pinyin, cursor, sketch }: 
   return (
     <>
       <div className="stage-plot">
-        <PitchPlot lines={lines} duration={chao.length * hop} labels={labels} boundaries={boundaries} cursor={cursor} height="100%" scrub={{ samples, offset: item.ref.t0 }} />
+        <PitchPlot lines={lines} duration={chao.length * hop} labels={labels} boundaries={boundaries} cursor={cursor} height="100%" scrub={{ samples, offset: item.ref.t0 }} focus={focus} />
       </div>
       <div className="legend">
         <span className="key ref" /> the speaker's pitch

@@ -45,6 +45,22 @@ export function displayShape(tone: Tone, count: number, index: number): number[]
   return SHAPES[pos][tone]
 }
 
+/**
+ * Clear, citation-strength shapes used when the app *makes* a tone (retoning a recording): the measured
+ * shapes above are true to relaxed speech but too subtle to hear reliably, e.g. a word-final 2nd tone
+ * rising only from 1.4 to 3. These span the range the way a careful speaker would.
+ */
+const CLEAR: Record<'single' | 'final' | 'nonfinal', Record<Tone, number[]>> = {
+  single: { 0: [2.3, 2.2, 2.1, 2, 1.9], 1: [4.8, 4.8, 4.8, 4.8, 4.8], 2: [2.6, 2.4, 2.9, 3.9, 4.9], 3: [2.2, 1.3, 0.8, 1.4, 2.8], 4: [5, 4.7, 3.7, 2.3, 1.1] },
+  final: { 0: [2.4, 2.3, 2.2, 2, 1.8], 1: [4.7, 4.7, 4.7, 4.7, 4.7], 2: [2.5, 2.3, 2.8, 3.8, 4.8], 3: [1.9, 1.2, 0.8, 0.9, 1.4], 4: [5, 4.7, 3.6, 2.2, 1.1] },
+  nonfinal: { 0: [2.2, 2.1, 2, 2, 2], 1: [4.8, 4.8, 4.8, 4.8, 4.8], 2: [2.6, 2.5, 3, 3.9, 4.7], 3: [2.2, 1.6, 1.1, 0.9, 0.9], 4: [5, 4.6, 3.6, 2.5, 1.8] },
+}
+
+/** Clear contour of `tone` for syllable `index` of a `count`-syllable word, for resynthesis. */
+export function clearShape(tone: Tone, count: number, index: number): number[] {
+  return CLEAR[count === 1 ? 'single' : index < count - 1 ? 'nonfinal' : 'final'][tone]
+}
+
 export interface Recognition {
   tone: 1 | 2 | 3 | 4
   /** 0..1, softmax over template distances. */

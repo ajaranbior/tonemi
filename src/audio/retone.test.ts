@@ -50,4 +50,17 @@ describe('retone', () => {
     const second = Array.from(t.hz.subarray(c, d)).filter((h) => !Number.isNaN(h))
     expect(second.at(-2)!).toBeGreaterThan(second[2] * 1.1)
   })
+
+  it('makes a clearly rising 2nd tone, even word-final, reaching its peak before the syllable ends', () => {
+    // Two flat syllables at mid height; turn the second into a 2nd tone.
+    const n = 60
+    const st = Array.from({ length: n }, (_, i) => (i < 5 || i >= 55 ? NaN : (range.lo + range.hi) / 2))
+    const t = targetContour({ st, segments: [[0, 30], [30, 60]], range }, [1, 1], [1, 2])
+    const chao = (v: number) => 1 + (4 * (v - range.lo)) / (range.hi - range.lo)
+    expect(chao(t[52]) - chao(t[32])).toBeGreaterThan(2)
+    expect(chao(t[52])).toBeGreaterThan(4.5)
+    // The first syllable is untouched away from the join.
+    expect(t[10]).toBeCloseTo(st[10], 5)
+  })
 })
+

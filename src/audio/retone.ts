@@ -1,7 +1,7 @@
 import { SR } from '../analysis/pitch'
 import type { SpeakerRange } from '../analysis/normalize'
 import type { Segment } from '../analysis/segment'
-import { displayShape, type Tone } from '../analysis/tones'
+import { clearShape, type Tone } from '../analysis/tones'
 
 /** A recording plus its pitch track: everything needed to make it say other tones. */
 export interface Voice {
@@ -28,13 +28,16 @@ export const FRAME_CENTER = 0.02
 const UNVOICED_STEP = 80
 /** Largest pitch change applied (semitones); bigger shifts sound robotic. */
 const MAX_SHIFT = 14
+/** Share of a syllable's voiced stretch over which a made tone's shape plays out (then it holds). */
+const SHAPE_SPAN = 0.85
 
 const num = (v: number | null | undefined) => (v === null || v === undefined ? NaN : v)
 
 /**
  * Per-frame target pitch (semitones, NaN when unvoiced): the speaker's own contour, with each
- * syllable whose tone differs from `expected` replaced by the textbook shape of `chosen`, fitted to
- * that syllable's voiced stretch. The change is eased in and out so syllable joins stay smooth.
+ * syllable whose tone differs from `expected` replaced by a clear textbook shape of `chosen`, fitted to
+ * that syllable's voiced stretch. The change is eased across syllable joins so they stay smooth; inside
+ * a syllable the shape is kept as is (easing there would flatten the ends, where rises and falls land).
  */
 export function targetContour(voice: Pick<Voice, 'st' | 'segments' | 'range'>, expected: Tone[], chosen: (Tone | null)[]): Float32Array {
   const n = voice.st.length
@@ -50,10 +53,12 @@ export function targetContour(voice: Pick<Voice, 'st' | 'segments' | 'range'>, e
     while (a < b && Number.isNaN(orig[a])) a++
     while (b > a && Number.isNaN(orig[b - 1])) b--
     if (b - a < 2) return
-    const tpl = displayShape(pick, count, k)
+    const tpl = clearShape(pick, count, k)
     for (let f = a; f < b; f++) {
       if (Number.isNaN(orig[f])) continue
-      const x = ((f - a) / (b - a - 1)) * (tpl.length - 1)
+      // The shape completes at 85% of the voiced stretch and holds: the quiet last frames carry little
+      // pitch, so a rise or fall that only arrives there is barely heard.
+      const x = Math.min(1, (f - a) / ((b - a - 1) * SHAPE_SPAN)) * (tpl.length - 1)
       const i = Math.floor(x)
       const j = Math.min(tpl.length - 1, i + 1)
       const chao = tpl[i] + (tpl[j] - tpl[i]) * (x - i)
@@ -61,11 +66,17 @@ export function targetContour(voice: Pick<Voice, 'st' | 'segments' | 'range'>, e
       delta[f] = Math.max(-MAX_SHIFT, Math.min(MAX_SHIFT, st - orig[f]))
     }
   })
-  // Ease the shift over ±3 frames within each voiced run, so a changed syllable doesn't jump.
+  // Ease the shift over ±3 frames around each join between syllables, so a changed syllable doesn't jump.
+  const nearJoin = new Uint8Array(n)
+  for (const [s] of voice.segments.slice(1)) for (let f = Math.max(0, s - 3); f < Math.min(n, s + 3); f++) nearJoin[f] = 1
   const out = new Float32Array(n)
   for (let f = 0; f < n; f++) {
     if (Number.isNaN(orig[f])) {
       out[f] = NaN
+      continue
+    }
+    if (!nearJoin[f]) {
+      out[f] = orig[f] + delta[f]
       continue
     }
     let sum = 0

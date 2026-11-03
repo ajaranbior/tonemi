@@ -44,7 +44,7 @@ interface Props {
   scrub?: { samples: Float32Array | null; offset: number }
   /** Drawing mode: pointer strokes on the plot report points (time s, Chao); `start` begins a stroke. */
   draw?: (pt: { t: number; v: number }, start: boolean) => void
-  /** Time range [start, end] (s) of the syllable being asked about: outlined, and shaded until graded. */
+  /** Time range [start, end] (s) of the syllable being asked about: shaded until graded. */
   focus?: [number, number]
 }
 
@@ -193,19 +193,11 @@ function paint(
   }
 
   // The syllable being asked about: tinted while unanswered (graded shading takes over after).
-  if (focus) {
-    const fx = x(focus[0])
-    const fw = Math.max(4, x(focus[1]) - fx)
-    const graded = labels.some((l) => l.ok !== undefined && l.span && l.span[0] < focus[1] && l.span[1] > focus[0])
-    if (!graded) {
-      g.globalAlpha = 0.16
-      g.fillStyle = css('--accent')
-      g.fillRect(fx, top, fw, h - top - bottom)
-      g.globalAlpha = 1
-    }
+  if (focus && !labels.some((l) => l.ok !== undefined && l.span && l.span[0] < focus[1] && l.span[1] > focus[0])) {
+    g.globalAlpha = 0.16
     g.fillStyle = css('--accent')
-    g.fillRect(fx, top, fw, 4)
-    g.fillRect(fx, h - bottom - 4, fw, 4)
+    g.fillRect(x(focus[0]), top, Math.max(4, x(focus[1]) - x(focus[0])), h - top - bottom)
+    g.globalAlpha = 1
   }
 
   // Right/wrong shading behind each answered syllable.

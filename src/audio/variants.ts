@@ -2,42 +2,88 @@ import { SR } from '../analysis/pitch'
 import type { Tone } from '../analysis/tones'
 import { FRAME_CENTER } from './retone'
 
+/** Frames of fade-out added after each voiced run: ~60 ms, so pieces end like speech, not like a click. */
+const TAIL = 6
+/** Shortest note (frames) a voiced piece is hummed as. */
+const MIN_NOTE = 9
+
+/**
+ * Per-frame pitch (semitones) and loudness (0..1) for the hum. Gaps inside a syllable are pitch-tracker
+ * dropouts (often the creaky end of a 3rd or 4th tone), so they are bridged; each voiced piece is then
+ * at least MIN_NOTE frames long and fades out over TAIL frames, carrying on in its last direction.
+ */
+export function humTrack(st: ArrayLike<number | null>, segments: [number, number][] = []): { pitch: Float32Array; amp: Float32Array } {
+  const n = st.length
+  const pitch = Float32Array.from({ length: n }, (_, i) => {
+    const v = st[i]
+    return v === null || v === undefined ? NaN : v
+  })
+  for (const [s, e] of segments) {
+    let last = -1
+    for (let f = Math.max(0, s); f < Math.min(n, e); f++) {
+      if (Number.isNaN(pitch[f])) continue
+      if (last >= 0 && f - last > 1) for (let g = last + 1; g < f; g++) pitch[g] = pitch[last] + ((pitch[f] - pitch[last]) * (g - last)) / (f - last)
+      last = f
+    }
+  }
+  const amp = Float32Array.from(pitch, (v) => (Number.isNaN(v) ? 0 : 1))
+  // Lengthen short pieces and add a fade-out tail after each.
+  let f = 0
+  while (f < n) {
+    if (amp[f] !== 1) {
+      f++
+      continue
+    }
+    const a = f
+    while (f < n && amp[f] === 1) f++
+    const b = f // run is [a, b)
+    const slope = b - a >= 3 ? (pitch[b - 1] - pitch[b - 3]) / 2 : 0
+    const step = Math.max(-1.2, Math.min(1.2, slope))
+    const hold = Math.max(0, MIN_NOTE - (b - a))
+    let g = b
+    for (let k = 1; k <= hold + TAIL && g < n && Number.isNaN(pitch[g]); k++, g++) {
+      pitch[g] = pitch[g - 1] + (k <= hold ? step / 2 : step)
+      amp[g] = k <= hold ? 1 : 1 - (k - hold) / (TAIL + 1)
+    }
+    f = g
+  }
+  return { pitch, amp }
+}
+
 /**
  * A hum that follows a recorded pitch track (semitones re 55 Hz per frame, null/NaN unvoiced): the
  * speaker's real melody with the consonants and vowels taken away. Sample 0 is the start of frame 0's
- * window, like the recording the track came from.
+ * window, like the recording the track came from. `segments` (syllables, frames) lets dropouts inside a
+ * syllable be bridged.
  */
-export function humFromContour(st: ArrayLike<number | null>, hop: number): Float32Array {
-  const n = st.length
+export function humFromContour(st: ArrayLike<number | null>, hop: number, segments?: [number, number][]): Float32Array {
+  const { pitch, amp } = humTrack(st, segments)
+  const n = pitch.length
   const len = Math.round((n * hop + FRAME_CENTER + 0.05) * SR)
   const out = new Float32Array(len)
-  const val = (f: number) => {
-    const v = f >= 0 && f < n ? st[f] : null
-    return v === null || v === undefined || Number.isNaN(v) ? NaN : v
-  }
-  // Per sample: interpolated semitones, NaN when the nearest frame is unvoiced.
-  const at = (i: number) => {
+  const lerp = (arr: Float32Array, i: number, fallback: number) => {
     const f = (i / SR - FRAME_CENTER) / hop
-    const r = Math.round(f)
-    if (Number.isNaN(val(r))) return NaN
-    const a = Math.floor(f)
-    const va = val(a)
-    const vb = val(a + 1)
-    if (Number.isNaN(va)) return vb
+    const a = Math.max(0, Math.min(n - 1, Math.floor(f)))
+    const b = Math.min(n - 1, a + 1)
+    const va = arr[a]
+    const vb = arr[b]
+    if (Number.isNaN(va)) return Number.isNaN(vb) ? fallback : vb
     if (Number.isNaN(vb)) return va
-    return va + (vb - va) * (f - a)
+    const w = Math.max(0, Math.min(1, f - a))
+    return va + (vb - va) * w
   }
-  const fade = Math.round(0.015 * SR)
+  // Loudness follows the frames, but never changes faster than a 15 ms ramp.
+  const slew = 1 / (0.015 * SR)
   let phase = 0
   let env = 0
   let lastSt = NaN
   for (let i = 0; i < len; i++) {
-    let s = at(i)
-    const voiced = !Number.isNaN(s)
-    if (voiced) lastSt = s
-    else s = lastSt
-    env = Math.max(0, Math.min(1, env + (voiced ? 1 : -1) / fade))
-    if (env === 0 || Number.isNaN(s)) continue
+    const goal = lerp(amp, i, 0)
+    env += Math.max(-slew, Math.min(slew, goal - env))
+    let s = lerp(pitch, i, NaN)
+    if (Number.isNaN(s)) s = lastSt
+    else lastSt = s
+    if (env <= 0 || Number.isNaN(s)) continue
     phase += (2 * Math.PI * 55 * 2 ** (s / 12)) / SR
     out[i] = 0.26 * env * (Math.sin(phase) + 0.45 * Math.sin(2 * phase) + 0.2 * Math.sin(3 * phase))
   }

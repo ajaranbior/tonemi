@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { hzToSt, SR, trackPitch } from '../analysis/pitch'
-import { canRetone, humFromContour, jitterRate, muffle } from './variants'
+import { canRetone, humFromContour, humTrack, jitterRate, muffle } from './variants'
 
 describe('melody-only audio', () => {
   it('hums the pitch track it is given', () => {
@@ -14,6 +14,24 @@ describe('melody-only audio', () => {
     expect(Math.max(...hz)).toBeLessThan(265)
     // Silent where unvoiced.
     expect(Math.max(...Array.from(hum.subarray(0, Math.round(0.1 * SR)), Math.abs))).toBe(0)
+  })
+
+  it('bridges pitch dropouts inside a syllable and fades pieces out instead of clicking', () => {
+    // 爸爸-like: a fall with a tracker hole in the middle, then a 3-frame neutral syllable.
+    const st: (number | null)[] = Array(45).fill(null)
+    for (let f = 5; f < 12; f++) st[f] = 30 - (f - 5)
+    for (let f = 16; f < 19; f++) st[f] = 22
+    for (let f = 25; f < 28; f++) st[f] = 20
+    const { pitch, amp } = humTrack(st, [[0, 22], [22, 45]])
+    // The hole at 12–15 is filled: one piece over the whole first syllable.
+    for (let f = 5; f < 19; f++) expect(amp[f]).toBe(1)
+    expect(pitch[13]).toBeGreaterThan(22)
+    expect(pitch[13]).toBeLessThan(24)
+    // The 3-frame neutral is held to a short note, then fades out.
+    for (let f = 25; f < 34; f++) expect(amp[f]).toBe(1)
+    expect(amp[35]).toBeGreaterThan(0)
+    expect(amp[35]).toBeLessThan(1)
+    expect(amp[40]).toBe(0)
   })
 
   it('muffling keeps a low tone and removes a high one', () => {

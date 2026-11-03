@@ -72,7 +72,7 @@ export async function prepareItem(manifest: Manifest, base: BankItem, target?: T
     }
   }
   if (melody === 'hum') {
-    return { ...item, melody, qUrl: wavUrl(humFromContour(item.ref.st, item.ref.hop)), qT0: 0 }
+    return { ...item, melody, qUrl: wavUrl(humFromContour(item.ref.st, item.ref.hop, item.ref.segments)), qT0: 0 }
   }
   if (melody === 'muffled') {
     try {

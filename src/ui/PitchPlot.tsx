@@ -46,6 +46,8 @@ interface Props {
   draw?: (pt: { t: number; v: number }, start: boolean) => void
   /** Time range [start, end] (s) of the syllable being asked about: shaded until graded. */
   focus?: [number, number]
+  /** Time ranges (s) of the other syllables, outlined so the number of syllables is plain. */
+  outline?: [number, number][]
 }
 
 interface Probe {
@@ -57,7 +59,7 @@ const Y_MIN = 0.3
 const Y_MAX = 5.7
 
 /** Chao-scale pitch plot (1 = bottom of your range, 5 = top). */
-export function PitchPlot({ lines, duration, boundaries = [], labels = [], cursor, height = 220, scrub, draw, focus }: Props) {
+export function PitchPlot({ lines, duration, boundaries = [], labels = [], cursor, height = 220, scrub, draw, focus, outline }: Props) {
   const canvas = useRef<HTMLCanvasElement>(null)
   const size = useRef({ w: 0, h: 0 })
   const [probe, setProbe] = useState<Probe | null>(null)
@@ -74,9 +76,9 @@ export function PitchPlot({ lines, duration, boundaries = [], labels = [], curso
     return () => ro.disconnect()
   }, [])
   useEffect(() => {
-    scene.current = { lines, duration, boundaries, labels, cursor, probe, focus }
+    scene.current = { lines, duration, boundaries, labels, cursor, probe, focus, outline }
     paint(canvas.current!, size.current, scene.current)
-  }, [lines, duration, boundaries, labels, cursor, probe, focus])
+  }, [lines, duration, boundaries, labels, cursor, probe, focus, outline])
 
   const samples = scrub?.samples ?? null
   const scrubber = useMemo(() => (samples ? new Scrubber(samples) : null), [samples])
@@ -164,7 +166,7 @@ function css(name: string): string {
 function paint(
   el: HTMLCanvasElement,
   { w, h }: { w: number; h: number },
-  { lines, duration, boundaries, labels, cursor, probe, focus }: Omit<Props, 'height' | 'scrub'> & { boundaries: number[]; labels: PlotLabel[]; probe: Probe | null },
+  { lines, duration, boundaries, labels, cursor, probe, focus, outline }: Omit<Props, 'height' | 'scrub'> & { boundaries: number[]; labels: PlotLabel[]; probe: Probe | null },
 ) {
   if (!w || !h) return
   const dpr = window.devicePixelRatio || 1
@@ -196,7 +198,20 @@ function paint(
   if (focus && !labels.some((l) => l.ok !== undefined && l.span && l.span[0] < focus[1] && l.span[1] > focus[0])) {
     g.globalAlpha = 0.16
     g.fillStyle = css('--accent')
-    g.fillRect(x(focus[0]), top, Math.max(4, x(focus[1]) - x(focus[0])), h - top - bottom)
+    g.beginPath()
+    g.roundRect(x(focus[0]) + 2, top + 1, Math.max(4, x(focus[1]) - x(focus[0]) - 4), h - top - bottom - 2, 6)
+    g.fill()
+    g.globalAlpha = 1
+  }
+  if (outline?.length) {
+    g.strokeStyle = css('--muted')
+    g.lineWidth = 1.5
+    g.globalAlpha = 0.7
+    for (const [a, b] of outline) {
+      g.beginPath()
+      g.roundRect(x(a) + 2, top + 1, Math.max(2, x(b) - x(a) - 4), h - top - bottom - 2, 6)
+      g.stroke()
+    }
     g.globalAlpha = 1
   }
 

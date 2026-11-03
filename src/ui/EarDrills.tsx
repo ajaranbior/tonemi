@@ -244,7 +244,10 @@ export function EarContrast({ onAnswered }: Pick<EarProps, 'onAnswered'>) {
   const { hop, segments } = item.ref
   const focus =
     segments.length > 1 && segments[at]
-      ? { span: [segments[at][0] * hop, segments[at][1] * hop] as [number, number], boundaries: segments.slice(1).map((s) => s[0] * hop) }
+      ? {
+          span: [segments[at][0] * hop, segments[at][1] * hop] as [number, number],
+          others: segments.flatMap((s, k) => (k === at ? [] : [[s[0] * hop, s[1] * hop] as [number, number]])),
+        }
       : undefined
 
   return (

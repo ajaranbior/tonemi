@@ -18,8 +18,8 @@ interface StageProps {
   preview?: { chosen: Tone[]; exclude?: string; syllables?: string[]; voice?: PreviewVoice } | null
   /** Draw-the-pitch mode: the learner's sketch so far, and how to extend or clear it. */
   sketch?: { line: PlotLine | null; onDraw: (pt: { t: number; v: number }, start: boolean) => void; onClear: () => void }
-  /** One syllable is being asked about: its real time span (s), and the real syllable boundaries to draw with it. */
-  focus?: { span: [number, number]; boundaries: number[] }
+  /** One syllable is being asked about: its real time span (s), and the other syllables' spans, outlined. */
+  focus?: { span: [number, number]; others: [number, number][] }
 }
 
 /**
@@ -66,15 +66,15 @@ export function EarStage({ answered, chart, slots, duration, cursor, playing, on
 
 function Placeholder({ slots, duration, cursor, playing, onPlay, sketch, focus }: { slots: number; duration: number; cursor?: number; playing: boolean; onPlay: () => void; sketch?: StageProps['sketch']; focus?: StageProps['focus'] }) {
   // Evenly spaced dividers hint at the number of syllables without giving anything away;
-  // with a focus syllable, the real ones, so the highlighted stretch is where that syllable is heard.
+  // with a focus syllable, every syllable gets its real box instead (tinted for the one asked).
   const even = useMemo(() => Array.from({ length: slots - 1 }, (_, i) => (duration * (i + 1)) / slots), [slots, duration])
-  const boundaries = focus?.boundaries ?? even
+  const boundaries = focus ? NO_BOUNDARIES : even
   const line = sketch?.line
   const lines = useMemo(() => (line ? [line] : NO_LINES), [line])
   return (
     <>
       <div className="stage-plot">
-        <PitchPlot lines={lines} duration={duration} boundaries={boundaries} cursor={playing ? cursor : undefined} height="100%" draw={sketch?.onDraw} focus={focus?.span} />
+        <PitchPlot lines={lines} duration={duration} boundaries={boundaries} cursor={playing ? cursor : undefined} height="100%" draw={sketch?.onDraw} focus={focus?.span} outline={focus?.others} />
         <button className={`stage-play${sketch ? ' corner' : ''}`} onClick={onPlay} disabled={playing} aria-label="Listen">
           <span aria-hidden="true">{playing ? '🔊' : '▶'}</span>
           {playing ? 'Listening…' : sketch ? 'Listen' : 'Tap to listen'}
@@ -98,6 +98,7 @@ function Placeholder({ slots, duration, cursor, playing, onPlay, sketch, focus }
   )
 }
 const NO_LINES: PlotLine[] = []
+const NO_BOUNDARIES: number[] = []
 
 /** Compact right/wrong chip for the card header (replaces the full-width banner). */
 export function ResultChip({ grade, accepted, comeback }: { grade: Grade; accepted?: boolean; comeback?: boolean }) {

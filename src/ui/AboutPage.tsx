@@ -21,7 +21,7 @@ export function AboutPage() {
           </li>
           <li>
             Extra voices (switchable in Drill/Ear settings): Microsoft Edge neural text-to-speech voices (Xiaoxiao, Xiaoyi, Yunxia,
-            Yunxi, Yunjian, Yunyang), generated with <a href="https://github.com/rany2/edge-tts" target="_blank" rel="noreferrer">edge-tts</a>{' '}
+            Yunxi, Yunjian), generated with <a href="https://github.com/rany2/edge-tts" target="_blank" rel="noreferrer">edge-tts</a>{' '}
             for personal, non-commercial use. Only clips whose pitch matches the expected tones are kept.
           </li>
           <li>

@@ -28,7 +28,6 @@ const VOICES: { voice: string; id: string; short: string }[] = [
   { voice: 'zh-CN-YunxiaNeural', id: 'yunxia', short: 'Yunxia (boy)' },
   { voice: 'zh-CN-YunxiNeural', id: 'yunxi', short: 'Yunxi (male)' },
   { voice: 'zh-CN-YunjianNeural', id: 'yunjian', short: 'Yunjian (male)' },
-  { voice: 'zh-CN-YunyangNeural', id: 'yunyang', short: 'Yunyang (male)' },
 ]
 
 const OUT = resolve('public/bank')

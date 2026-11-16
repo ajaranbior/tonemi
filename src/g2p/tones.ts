@@ -96,6 +96,19 @@ export interface SurfaceTones {
   approximate: boolean
 }
 
+const DIGITS = new Set([...'零〇一二三四五六七八九'])
+const NUMBER_UNITS = new Set([...'十百千万亿萬億'])
+
+/** Digit strings, the final digit of a compound number, and calendar ordinals. */
+function numberedOne(chars: string[], i: number): boolean {
+  const prev = chars[i - 1]
+  const next = chars[i + 1]
+  if (DIGITS.has(next)) return true
+  if ((DIGITS.has(prev) || NUMBER_UNITS.has(prev)) && !NUMBER_UNITS.has(next)) return true
+  // 一月 = January; a duration uses 一个月 (and keeps normal sandhi).
+  return next === '月' || next === '号' || next === '號' || (next === '日' && prev === '月')
+}
+
 /**
  * Apply Mainland tone sandhi: 一, 不 and 3rd-tone chains.
  * Runs of 3+ third tones default to all-but-last → 2, flagged as approximate.
@@ -109,7 +122,7 @@ export function surfaceTones(chars: string[], lexical: Tone[]): SurfaceTones {
     if (chars[i] === '不' && lexical[i] === 4 && n === 4) t[i] = 2
     if (chars[i] === '一' && lexical[i] === 1) {
       const prev = chars[i - 1]
-      if (prev === '第' || n === null || n === 0) continue
+      if (prev === '第' || n === null || n === 0 || numberedOne(chars, i)) continue
       if (prev && prev === chars[i + 1]) t[i] = 0 // 看一看
       else t[i] = n === 4 ? 2 : 4
     }

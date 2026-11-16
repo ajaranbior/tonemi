@@ -9,11 +9,10 @@ import { audioContext } from '../audio/context'
 import { decodeTo16k } from '../audio/resample'
 import { playSpan, stopSpan } from '../audio/span'
 import { buildClips, cueCharTimes, FRAME_CENTER, frameTime, hanIndex } from '../ear/chunks'
-import { clearRetry, dueRetry, grade, pickByCombo, scheduleRetry, updateStat, type Retry } from '../ear/adapt'
+import { dueRetry, grade, pickByCombo } from '../ear/adapt'
 import { sentenceTones } from '../g2p/tones'
 import { markedSyllable } from './tone'
-import { overrule, type TrialRecord } from '../ear/overrule'
-import { addEarConfusion, getEarCombos, getPref, setEarCombo, setPref } from '../store'
+import { getEarCombos, getPref, setPref } from '../store'
 import { parseSubtitles, type Cue } from '../subtitles'
 import { Toggle } from './Toggle'
 import { LoopLength } from './LoopLength'
@@ -23,13 +22,10 @@ import { EarStage, ResultChip } from './EarStage'
 import type { PreviewVoice } from './AnswerPreview'
 import { SandhiNote, ToneAnswer } from './ToneAnswer'
 import type { EarProps } from './EarBank'
-import { turnedGreen } from '../ear/game'
-import { useReview } from './useReview'
-import { inField } from './keys'
+import { useEarTrial, useEarControls, type TrialSource } from './useEarTrial'
 import { AnkiSource, type AnkiLoaded } from './AnkiSource'
 import { wavBlob } from '../audio/wav'
 import { SR } from '../analysis/pitch'
-import { FEEDBACK_SECONDS, playFeedback } from '../audio/sfx'
 
 interface Clip {
   id: string
@@ -48,6 +44,8 @@ interface Clip {
   syllables: string[]
   key: string
 }
+
+const trialSource: TrialSource<Clip> = { tones: (c) => c.tones, id: (c) => c.id }
 
 const SIZES: [number, string][] = [[1, '1 word'], [2, '2 words'], [3, '3 words'], [0, 'Phrase']]
 /** Clip size: only the word the Anki card teaches. */
@@ -71,24 +69,15 @@ export default function EarClips({ onAnswered, onOverride, game, onGame, source 
   const [words, setWords] = useState(() => getPref<string>(sizeKey, anki ? String(TARGET) : '2'))
   const [showVideo, setShowVideo] = useState(() => getPref<boolean>('ear.video', false))
   const [clip, setClip] = useState<Clip | null>(null)
-  const [chosen, setChosen] = useState<(Tone | null)[]>([])
-  const [answered, setAnswered] = useState(false)
   const [playing, setPlaying] = useState(false)
   const [cursor, setCursor] = useState<number | undefined>()
-  const [accepted, setAccepted] = useState(false)
-  const [comeback, setComeback] = useState(false)
-  const lastRec = useRef<TrialRecord | null>(null)
-  const [sound, setSound] = useState(() => getPref<boolean>('ear.sound', true))
-  const [autoReveal, setAutoReveal] = useState(() => getPref<boolean>('ear.auto', true))
-  const review = useReview<Clip>()
-  const { record, leave } = review
+  const session = useEarTrial(clip, trialSource, { onAnswered, onOverride, game })
+  const { chosen, comeback, sound, setSound, autoReveal, setAutoReveal,
+    trial, retry, review, archive, reset, submit, afterFeedback,
+    rv, shown: sClip, shownChosen: sChosen, shownAnswered: sAnswered, toggleAccept } = session
   const mediaEl = useRef<HTMLVideoElement & HTMLAudioElement>(null)
   const playToken = useRef(0)
-  const trial = useRef(0)
-  const retry = useRef<Retry[]>([])
   const autoplay = useRef(false)
-  /** Bumped per question, so a replay scheduled for one doesn't start over the next. */
-  const question = useRef(0)
 
   const loadFiles = async (files: FileList | null) => {
     if (!files) return
@@ -217,21 +206,17 @@ export default function EarClips({ onAnswered, onOverride, game, onGame, source 
         pick = pickByCombo(pool, (c) => c.key, getEarCombos())
       }
       if (!pick) return
-      if (clip && answered) record({ item: clip, chosen, accepted, rec: lastRec.current ?? undefined })
-      leave()
-      setAccepted(false)
-      setComeback(false)
-      lastRec.current = null
+      archive()
+      reset(pick.tones)
       autoplay.current = play
-      question.current++
       setClip(pick)
-      setChosen(pick.tones.map(() => null))
-      setAnswered(false)
     },
-    [clips, clip, chosen, answered, accepted, record, leave],
+    [clips, archive, reset, trial, retry],
   )
 
   useEffect(() => {
+    // The first question depends on asynchronously loaded audio and subtitles.
+    // oxlint-disable-next-line react/set-state-in-effect
     if (ready && clips.length && (!clip || !byIdHas(clips, clip))) next(null, false)
   }, [ready, clips, clip, next])
 
@@ -275,118 +260,15 @@ export default function EarClips({ onAnswered, onOverride, game, onGame, source 
   useEffect(() => () => stopSpan(mediaEl.current), [])
 
   const check = useCallback((answers: (Tone | null)[] = chosen) => {
-    if (!clip || answered || answers.some((c) => c === null)) return
-    const g = grade(clip.tones, answers)
-    const conf = clip.tones.flatMap((t, i) => (g.correct[i] ? [] : [`${t}>${answers[i]}`]))
-    lastRec.current = { key: clip.key, conf }
-    const before = getEarCombos()[clip.key]
-    const stat = updateStat(before, g.all)
-    setEarCombo(clip.key, stat)
-    const back = g.all && retry.current.some((r) => r.id === clip.id)
-    conf.forEach(addEarConfusion)
-    trial.current++
-    retry.current = g.all ? clearRetry(retry.current, clip.id) : scheduleRetry(retry.current, clip.id, trial.current)
-    setAnswered(true)
-    setComeback(back)
-    onAnswered(g.all, { comeback: back, milestone: turnedGreen(before?.ema, stat.ema, stat.n) ? [...clip.key].join('-') : undefined })
-    if (sound) playFeedback(g.all, game && back)
-    const asked = question.current
-    if (!g.all) setTimeout(() => asked === question.current && void play(clip), sound ? FEEDBACK_SECONDS * 1000 : 0)
-  }, [clip, answered, chosen, onAnswered, play, sound, game])
+    const g = submit(answers)
+    if (g && !g.all) afterFeedback(() => void play(clip))
+  }, [submit, chosen, afterFeedback, play, clip])
 
-  const rv = review.reviewing
-  const sClip = rv ? rv.item : clip
-  const sChosen = rv ? rv.chosen : chosen
-  const sAnswered = rv ? true : answered
-  const wrong = !!sClip && sAnswered && !grade(sClip.tones, sChosen).all
-
-  /** The learner disagrees with the answer key (or takes that back): flip this trial's result. */
-  const toggleAccept = useCallback(() => {
-    if (rv && review.index !== null) {
-      if (!rv.rec) return
-      const key = rv.rec.key
-      const later = review.history.slice(review.index + 1).filter((t) => t.rec?.key === key).length + (answered && lastRec.current?.key === key ? 1 : 0)
-      const now = !rv.accepted
-      overrule(rv.rec, later, now)
-      review.update(review.index, { accepted: now })
-      if (now) retry.current = clearRetry(retry.current, rv.item.id)
-      onOverride(now ? 1 : -1)
-    } else {
-      const rec = lastRec.current
-      if (!clip || !answered || !rec) return
-      const now = !accepted
-      overrule(rec, 0, now)
-      if (now) retry.current = clearRetry(retry.current, clip.id)
-      setAccepted(now)
-      onOverride(now ? 1 : -1)
-    }
-  }, [rv, review, clip, answered, accepted, onOverride])
-
-  /** Backspace: take back the last tone entered. */
-  const undo = useCallback(() => {
-    if (answered) return
-    setChosen((c) => {
-      const last = c.map((x) => x !== null).lastIndexOf(true)
-      return last < 0 ? c : c.map((x, i) => (i === last ? null : x))
-    })
-  }, [answered])
-
-  const pick = useCallback(
-    (index: number, tone: Tone) => {
-      if (answered) return
-      const next = chosen.map((x, i) => (i === index ? (x === tone ? null : tone) : x))
-      setChosen(next)
-      if (autoReveal && next.every((c) => c !== null)) check(next)
-    },
-    [answered, chosen, autoReveal, check],
-  )
-
-  const advance = useCallback(() => {
-    if (rv) review.forward()
-    else next(clip)
-  }, [rv, review, next, clip])
-
-  // Keys: digits fill the next empty syllable, Enter checks/continues, Space or R replays,
-  // ← or Q goes back to the previous clip, → or E forward / next.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey || !clip || inField(e)) return
-      if (e.key === 'Enter') {
-        e.preventDefault()
-        if (sAnswered) advance()
-        else if (!autoReveal) check()
-      } else if (e.key === 'ArrowLeft' || e.key === 'q' || e.key === 'Q') {
-        e.preventDefault()
-        review.back()
-      } else if (e.key === 'ArrowRight' || e.key === 'e' || e.key === 'E') {
-        e.preventDefault()
-        if (sAnswered) advance()
-      } else if (e.key === 'Backspace') {
-        e.preventDefault()
-        undo()
-      } else if ((e.key === 'm' || e.key === 'M') && wrong) {
-        toggleAccept()
-      } else if (e.key === ' ' || e.key === 'r' || e.key === 'R') {
-        e.preventDefault()
-        if (!e.repeat) void play(sClip)
-      } else if (!sAnswered && /^[0-5]$/.test(e.key)) {
-        const i = chosen.findIndex((c) => c === null)
-        if (i >= 0 && !(i === 0 && (e.key === '0' || e.key === '5'))) pick(i, (e.key === '5' ? 0 : Number(e.key)) as Tone)
-      }
-    }
-    // A focused button would otherwise "click" on Space release.
-    const onUp = (e: KeyboardEvent) => e.key === ' ' && !inField(e) && e.preventDefault()
-    window.addEventListener('keydown', onKey)
-    window.addEventListener('keyup', onUp)
-    return () => {
-      window.removeEventListener('keydown', onKey)
-      window.removeEventListener('keyup', onUp)
-    }
-  }, [clip, sClip, sAnswered, chosen, advance, check, play, pick, review, autoReveal, undo, toggleAccept, wrong])
+  const { pick, advance } = useEarControls(session, check, () => next(clip), () => void play(sClip))
 
   const complete = chosen.length > 0 && chosen.every((c) => c !== null)
   const g = sClip && sAnswered ? grade(sClip.tones, sChosen) : null
-  const ok = rv ? !!rv.accepted : accepted
+  const ok = rv ? !!rv.accepted : session.accepted
   const sSpan = sClip ? span(sClip) : null
   const s0 = sSpan?.[0]
   const s1 = sSpan?.[1]
@@ -514,8 +396,8 @@ export default function EarClips({ onAnswered, onOverride, game, onGame, source 
 <details className="card settings">
             <summary>{anki ? 'Anki settings' : 'Video settings'}</summary>
             <Toggle label="Streaks and points" value={game} onChange={onGame} />
-            <Toggle label="Sound effects and vibration for right/wrong" value={sound} onChange={(v) => { setSound(v); setPref('ear.sound', v) }} />
-            <Toggle label="Reveal the answer as soon as all tones are chosen" value={autoReveal} onChange={(v) => { setAutoReveal(v); setPref('ear.auto', v) }} />
+            <Toggle label="Sound effects and vibration for right/wrong" value={sound} onChange={setSound} />
+            <Toggle label="Reveal the answer as soon as all tones are chosen" value={autoReveal} onChange={setAutoReveal} />
             {media?.video && <Toggle label="Show video (may reveal burned-in subtitles)" value={showVideo} onChange={(v) => { setShowVideo(v); setPref('ear.video', v) }} />}
             <LoopLength />
             <p className="muted small">Pitch range is estimated from the speech in the {anki ? 'loaded cards, so a deck with several speakers makes the chart less accurate' : 'subtitled lines; background music or several speakers make the chart less accurate'}.</p>

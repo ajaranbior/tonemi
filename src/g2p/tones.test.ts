@@ -27,6 +27,23 @@ describe('tones', () => {
     expect(markTone('lv', 4)).toBe('lǜ')
     expect(markTone('ma', 0)).toBe('ma')
   })
+  it('keeps 一 in digit strings, compound-number endings and dates at first tone', () => {
+    for (const text of ['一九九八年', '一九一八年', '一二三', '一零一', '一月', '十一月', '一月一日', '一号', '十一天', '一百零一个']) {
+      const result = sentenceTones(text)
+      result.chars.forEach((c, i) => {
+        if (c === '一' && !(text === '一百零一个' && i === 0)) expect(result.tones[i], `${text} at ${i}`).toBe(1)
+      })
+    }
+  })
+  it('still changes 一 before classifiers and number units', () => {
+    expect(surface('一个')).toEqual([2, 4])
+    expect(surface('一天')).toEqual([4, 1])
+    expect(surface('一百')).toEqual([4, 3])
+    expect(surface('一万')).toEqual([2, 4])
+    expect(sentenceTones('一个月').tones).toEqual([2, 4, 4])
+    expect(sentenceTones('一日三餐').tones).toEqual([2, 4, 1, 1])
+    expect(surface('看一看')).toEqual([4, 0, 4])
+  })
   it('handles running text', () => {
     const r = sentenceTones('我的朋友, 你好!')
     expect(r.tones).toEqual([3, 0, 2, 0, null, null, 2, 3, null])

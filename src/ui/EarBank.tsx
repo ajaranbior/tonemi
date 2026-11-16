@@ -6,11 +6,10 @@ import { jitterRate, canRetone } from '../audio/variants'
 import { audioUrl, loadManifest, refChao } from '../bank/load'
 import type { BankItem, ItemKind, Manifest } from '../bank/types'
 import { manyVoices, pickVoice, usableItems, voiceCount, voiceLabel } from '../bank/voices'
-import { clearRetry, duePattern, dueRetry, freshWeight, grade, melodyLevel, pickByCombo, pickWeighted, scheduleRetry, updateStat, type Retry } from '../ear/adapt'
-import { overrule, type TrialRecord } from '../ear/overrule'
+import { duePattern, dueRetry, freshWeight, grade, melodyLevel, pickByCombo, pickWeighted } from '../ear/adapt'
 import { useFlag } from '../flags'
-import { addEarConfusion, getEarCombos, getEarSeen, getPref, recordEarSeen, setEarCombo, setPref } from '../store'
-import { answerUrl, prepareItem, realItem, type EarItem } from './earItem'
+import { getEarCombos, getEarSeen, getPref, setPref } from '../store'
+import { answerUrl, EarAudioPool, prepareItem, realItem, releaseItem, type EarItem } from './earItem'
 import { Toggle } from './Toggle'
 import { LoopLength } from './LoopLength'
 import { VoiceSettings } from './VoiceSettings'
@@ -21,11 +20,8 @@ import { EarStage, ResultChip } from './EarStage'
 import { extendSketch, sketchLine, type Sketch } from './sketch'
 import type { PreviewVoice } from './AnswerPreview'
 import { SandhiNote, ToneAnswer } from './ToneAnswer'
-import { turnedGreen } from '../ear/game'
-import { useReview } from './useReview'
-import { inField } from './keys'
+import { useEarTrial, useEarControls, type TrialSource } from './useEarTrial'
 import { useSamples } from './useSamples'
-import { FEEDBACK_SECONDS, playFeedback } from '../audio/sfx'
 
 type Kind = ItemKind | 'mix'
 const KINDS: [Kind, string][] = [['single', '1 syllable'], ['pair', '2'], ['triple', '3'], ['mix', 'Mix']]
@@ -38,6 +34,7 @@ const RETONE_SHARE = 0.5
 
 /** An asked word plus the learner's drawing of it (draw-the-pitch mode). */
 type Asked = EarItem & { sketch?: Sketch | null }
+const source: TrialSource<Asked> = { tones: (i) => i.surface, id: (i) => realItem(i).id, seenKey: (i) => i.seenKey }
 
 export interface AnswerExtra {
   /** Right on a word that was missed a few trials earlier. */
@@ -72,27 +69,30 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
     melody: useFlag('melody'),
     draw: useFlag('draw'),
   }
-  const [chosen, setChosen] = useState<(Tone | null)[]>([])
-  const [answered, setAnswered] = useState(false)
   const [playing, setPlaying] = useState(false)
   const [cursor, setCursor] = useState<number | undefined>()
-  const [accepted, setAccepted] = useState(false)
-  const [comeback, setComeback] = useState(false)
-  const lastRec = useRef<TrialRecord | null>(null)
-  const [sound, setSound] = useState(() => getPref<boolean>('ear.sound', true))
   const [, setVoiceTick] = useState(0)
-  const [autoReveal, setAutoReveal] = useState(() => getPref<boolean>('ear.auto', true))
-  const review = useReview<Asked>()
-  const { record, leave } = review
+  const session = useEarTrial(item, source, { onAnswered, onOverride, game }, flags.retryOther)
+  const { chosen, accepted, comeback, sound, setSound, autoReveal, setAutoReveal,
+    trial, retry, review, archive, reset, submit, afterFeedback, cancelFeedback,
+    rv, shown, shownChosen, shownAnswered, toggleAccept } = session
   const playToken = useRef(0)
-  const trial = useRef(0)
-  const retry = useRef<Retry[]>([])
   const autoplay = useRef(false)
   /** Last voice each word was played in, so a missed word comes back in another voice. */
   const lastVoice = useRef(new Map<string, string>())
   /** Bumped per question so a slow-to-prepare question doesn't land after a newer one. */
   const nextToken = useRef(0)
-  const recorded = useRef<Asked | null>(null)
+  const [audioPool] = useState(() => new EarAudioPool())
+
+  useEffect(() => {
+    audioPool.retain([...(item ? [item] : []), ...review.history.map((t) => t.item)])
+  }, [audioPool, item, review.history])
+  useEffect(() => () => {
+    ++nextToken.current
+    ++playToken.current
+    stopPlayback()
+    audioPool.clear()
+  }, [audioPool])
 
   useEffect(() => {
     loadManifest().then(setManifest, (e) => setError(String(e)))
@@ -150,29 +150,27 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
       if (!pick) return
       pick = pickVoice(manifest, pick, lastVoice.current.get(pick.id))
       lastVoice.current.set(pick.id, pick.speaker)
-      if (item && answered && recorded.current !== item) {
-        recorded.current = item
-        record({ item: { ...item, sketch }, chosen, accepted, rec: lastRec.current ?? undefined })
-      }
       const level = flags.melody ? melodyLevel(getEarCombos()[(target ?? pick.surface).join('')]) : 'full'
       const mine = ++nextToken.current
+      cancelFeedback()
       ++playToken.current
       stopPlayback()
       void prepareItem(manifest, pick, target, level).then((ready) => {
-        if (mine !== nextToken.current) return
-        leave()
-        setAccepted(false)
-        setComeback(false)
+        if (mine !== nextToken.current) return releaseItem(ready)
+        ++playToken.current
+        stopPlayback()
+        setPlaying(false)
+        setCursor(undefined)
+        audioPool.add(ready)
+        archive(item ? { ...item, sketch } : null)
+        reset(ready.surface)
         setSketch(null)
         setAbStep(null)
-        lastRec.current = null
         autoplay.current = play
         setItem(ready)
-        setChosen(ready.surface.map(() => null))
-        setAnswered(false)
       })
     },
-    [manifest, item, chosen, answered, accepted, sketch, record, leave, flags.fresh, flags.retryOther, flags.retoned, flags.melody],
+    [manifest, item, sketch, archive, reset, cancelFeedback, audioPool, trial, retry, flags.fresh, flags.retryOther, flags.retoned, flags.melody],
   )
 
   const started = useRef(false)
@@ -182,13 +180,6 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
       next(kind, null, false)
     }
   }, [manifest, item, kind, next])
-
-  const rv = review.reviewing
-  const shown = rv ? rv.item : item
-  const shownChosen = rv ? rv.chosen : chosen
-  const shownAnswered = rv ? true : answered
-
-  const wrong = !!shown && shownAnswered && !grade(shown.surface, shownChosen).all
 
   /** Play what is asked: the hum / muffled version before answering, the full word after. */
   const listen = useCallback(
@@ -218,7 +209,6 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
       void listen()
     }
   }, [shown, listen])
-  useEffect(() => () => stopPlayback(), [])
 
   /** Same word, another voice (before or after answering); a retoned or melody-only question stays so. */
   const otherVoice = () => {
@@ -227,8 +217,16 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
     const v = pickVoice(manifest, real, item.speaker)
     lastVoice.current.set(v.id, v.speaker)
     const mine = ++nextToken.current
+    cancelFeedback()
+    ++playToken.current
+    stopPlayback()
     void prepareItem(manifest, v, item.from ? item.surface : undefined, item.melody ?? 'full').then((ready) => {
-      if (mine !== nextToken.current) return
+      if (mine !== nextToken.current) return releaseItem(ready)
+      ++playToken.current
+      stopPlayback()
+      setPlaying(false)
+      setCursor(undefined)
+      audioPool.add(ready)
       autoplay.current = true
       setItem({ ...ready, sketch: item.sketch })
     })
@@ -260,117 +258,13 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
   }
 
   const check = useCallback((answers: (Tone | null)[] = chosen) => {
-    if (!item || answered || answers.some((c) => c === null)) return
-    const g = grade(item.surface, answers)
-    const key = comboKey(item)
-    const conf = item.surface.flatMap((t, i) => (g.correct[i] ? [] : [`${t}>${answers[i]}`]))
-    const first = recordEarSeen(item.seenKey, g.all)
-    lastRec.current = { key, conf, first }
-    const before = getEarCombos()[key]
-    const stat = updateStat(before, g.all)
-    setEarCombo(key, stat)
-    const realId = realItem(item).id
-    const back = g.all && retry.current.some((r) => (flags.retryOther ? r.pattern === key : r.id === realId))
-    conf.forEach(addEarConfusion)
-    trial.current++
-    if (flags.retryOther) retry.current = g.all ? clearRetry(retry.current, realId, key) : scheduleRetry(retry.current, realId, trial.current, key)
-    else retry.current = g.all ? clearRetry(retry.current, realId) : scheduleRetry(retry.current, realId, trial.current)
-    setAnswered(true)
-    setComeback(back)
-    onAnswered(g.all, { comeback: back, milestone: turnedGreen(before?.ema, stat.ema, stat.n) ? [...key].join('-') : undefined })
-    if (sound) playFeedback(g.all, game && back)
-    const wait = sound ? FEEDBACK_SECONDS * 1000 : 0
-    // A miss replays the word (or right → yours → right); a melody-only question plays the full word either way.
-    // Not if the learner has already moved on to the next word by then.
-    const asked = nextToken.current
-    const later = (replay: () => void) => setTimeout(() => asked === nextToken.current && replay(), wait)
-    if (!g.all && flags.autoAB) later(() => void playAB(item, answers as Tone[]))
-    else if (!g.all || item.melody) later(() => void listen(1, true))
-  }, [item, answered, chosen, onAnswered, listen, playAB, sound, game, flags.retryOther, flags.autoAB])
+    const g = submit(answers)
+    if (!g || !item) return
+    if (!g.all && flags.autoAB) afterFeedback(() => void playAB(item, answers as Tone[]))
+    else if (!g.all || item.melody) afterFeedback(() => void listen(1, true))
+  }, [submit, chosen, item, flags.autoAB, afterFeedback, playAB, listen])
 
-  /** The learner disagrees with the answer key (or takes that back): flip this trial's result. */
-  const toggleAccept = useCallback(() => {
-    if (rv && review.index !== null) {
-      if (!rv.rec) return
-      const key = rv.rec.key
-      const later = review.history.slice(review.index + 1).filter((t) => t.rec?.key === key).length + (answered && lastRec.current?.key === key ? 1 : 0)
-      const now = !rv.accepted
-      overrule(rv.rec, later, now)
-      review.update(review.index, { accepted: now })
-      if (now) retry.current = clearRetry(retry.current, realItem(rv.item).id, flags.retryOther ? key : undefined)
-      onOverride(now ? 1 : -1)
-    } else {
-      const rec = lastRec.current
-      if (!item || !answered || !rec) return
-      const now = !accepted
-      overrule(rec, 0, now)
-      if (now) retry.current = clearRetry(retry.current, realItem(item).id, flags.retryOther ? rec.key : undefined)
-      setAccepted(now)
-      onOverride(now ? 1 : -1)
-    }
-  }, [rv, review, item, answered, accepted, onOverride, flags.retryOther])
-
-  /** Backspace: take back the last tone entered. */
-  const undo = useCallback(() => {
-    if (answered) return
-    setChosen((c) => {
-      const last = c.map((x) => x !== null).lastIndexOf(true)
-      return last < 0 ? c : c.map((x, i) => (i === last ? null : x))
-    })
-  }, [answered])
-
-  const pick = useCallback(
-    (index: number, tone: Tone) => {
-      if (answered) return
-      const next = chosen.map((x, i) => (i === index ? (x === tone ? null : tone) : x))
-      setChosen(next)
-      if (autoReveal && next.every((c) => c !== null)) check(next)
-    },
-    [answered, chosen, autoReveal, check],
-  )
-
-  const advance = useCallback(() => {
-    if (rv) review.forward()
-    else next(kind, item)
-  }, [rv, review, next, kind, item])
-
-  // Keyboard: digits fill the next empty syllable, Enter checks/continues, Space or R replays,
-  // ← or Q goes back to the previous word, → or E forward / next.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey || !item || inField(e)) return
-      if (e.key === 'Enter') {
-        e.preventDefault()
-        if (shownAnswered) advance()
-        else if (!autoReveal) check()
-      } else if (e.key === 'ArrowLeft' || e.key === 'q' || e.key === 'Q') {
-        e.preventDefault()
-        review.back()
-      } else if (e.key === 'ArrowRight' || e.key === 'e' || e.key === 'E') {
-        e.preventDefault()
-        if (shownAnswered) advance()
-      } else if (e.key === 'Backspace') {
-        e.preventDefault()
-        undo()
-      } else if ((e.key === 'm' || e.key === 'M') && wrong) {
-        toggleAccept()
-      } else if (e.key === ' ' || e.key === 'r' || e.key === 'R') {
-        e.preventDefault()
-        if (!e.repeat) void listen()
-      } else if (!shownAnswered && /^[0-5]$/.test(e.key)) {
-        const i = chosen.findIndex((c) => c === null)
-        if (i >= 0 && !(i === 0 && (e.key === '0' || e.key === '5'))) pick(i, (e.key === '5' ? 0 : Number(e.key)) as Tone)
-      }
-    }
-    // A focused button would otherwise "click" on Space release.
-    const onUp = (e: KeyboardEvent) => e.key === ' ' && !inField(e) && e.preventDefault()
-    window.addEventListener('keydown', onKey)
-    window.addEventListener('keyup', onUp)
-    return () => {
-      window.removeEventListener('keydown', onKey)
-      window.removeEventListener('keyup', onUp)
-    }
-  }, [item, shownAnswered, chosen, advance, check, listen, pick, review, autoReveal, undo, toggleAccept, wrong])
+  const { pick, advance } = useEarControls(session, check, () => next(kind, item), () => void listen())
 
   const refRange: SpeakerRange | null = manifest && shown ? manifest.speakers[shown.speaker].range : null
   const complete = chosen.length > 0 && chosen.every((c) => c !== null)
@@ -501,8 +395,8 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
       <details className="card settings">
         <summary>Ear settings</summary>
         <Toggle label="Streaks and points" value={game} onChange={onGame} />
-        <Toggle label="Sound effects and vibration for right/wrong" value={sound} onChange={(v) => { setSound(v); setPref('ear.sound', v) }} />
-        <Toggle label="Reveal the answer as soon as all tones are chosen" value={autoReveal} onChange={(v) => { setAutoReveal(v); setPref('ear.auto', v) }} />
+        <Toggle label="Sound effects and vibration for right/wrong" value={sound} onChange={setSound} />
+        <Toggle label="Reveal the answer as soon as all tones are chosen" value={autoReveal} onChange={setAutoReveal} />
         <Toggle label="Show the character before answering" value={showHanzi} onChange={(v) => { setShowHanzi(v); setPref('ear.hanzi', v) }} />
         <LoopLength />
         <VoiceSettings manifest={manifest} onChange={() => setVoiceTick((x) => x + 1)} />

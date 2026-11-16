@@ -1,3 +1,5 @@
+import { createYinDifference } from './yinDifference'
+
 /** All analysis runs on 16 kHz mono. */
 export const SR = 16000
 /** 10 ms hop. */
@@ -43,6 +45,7 @@ export interface FrameResult {
  */
 export function createFrameAnalyzer(): (frame: Float32Array) => FrameResult {
   const d = new Float32Array(MAX_LAG + 2)
+  const difference = createYinDifference(W, MAX_LAG + 1)
   return (frame) => {
     let sum = 0
     let crossings = 0
@@ -53,21 +56,19 @@ export function createFrameAnalyzer(): (frame: Float32Array) => FrameResult {
     const rms = Math.sqrt(sum / frame.length)
     const zcr = crossings / frame.length
     if (rms < 0.002) return { hz: NaN, rms, zcr }
-    return { hz: yin(frame, d), rms, zcr }
+    const maxLag = Math.min(MAX_LAG + 1, frame.length - W)
+    if (maxLag <= MIN_LAG + 1) return { hz: NaN, rms, zcr }
+    difference(frame, maxLag, d)
+    return { hz: yin(d, maxLag), rms, zcr }
   }
 }
 
-function yin(x: Float32Array, d: Float32Array): number {
-  const maxLag = Math.min(MAX_LAG + 1, x.length - W)
+function yin(d: Float32Array, maxLag: number): number {
   // Difference function and its cumulative-mean normalisation, in place.
   let running = 0
   d[0] = 1
   for (let tau = 1; tau <= maxLag; tau++) {
-    let s = 0
-    for (let j = 0; j < W; j++) {
-      const diff = x[j] - x[j + tau]
-      s += diff * diff
-    }
+    const s = d[tau]
     running += s
     d[tau] = running > 0 ? (s * tau) / running : 1
   }

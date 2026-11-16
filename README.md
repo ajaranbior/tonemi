@@ -64,7 +64,7 @@ Needs `ffmpeg` and `curl`, and network access to commons.wikimedia.org.
 npm install
 npm run dev          # http://localhost:5173 (mic works on localhost)
 npm run dev:https    # self-signed HTTPS on your LAN, to test on a phone
-npm test             # unit tests (pitch tracking, segmentation, sandhi, subtitles)
+npm test             # analysis and UI regression tests
 npm run build        # static site in dist/
 ```
 
@@ -72,8 +72,9 @@ The microphone needs HTTPS (or localhost). On iOS, audio starts only after a tap
 
 ### Deploy to GitHub Pages
 
-`.github/workflows/pages.yml` runs lint, tests and the build on every push to
-`main`, then publishes `dist/` to the `gh-pages` branch. Pages serves that branch
+`.github/workflows/pages.yml` runs lint, tests and the build on branch pushes
+(except `gh-pages`) and pull requests. Successful `main` builds publish `dist/`
+to the `gh-pages` branch. Pages serves that branch
 (**Settings → Pages → Source: Deploy from a branch → `gh-pages` / root**).
 Live at <https://ajaranbior.github.io/tonemi/>.
 
@@ -114,7 +115,7 @@ the expected tones (catching wrong polyphone readings and missing neutral tones)
 
 | Step | Where |
 |---|---|
-| YIN pitch tracking at 16 kHz / 10 ms, octave-error repair, creaky-voice detection | `src/analysis/pitch.ts` |
+| YIN pitch tracking at 16 kHz / 10 ms (FFT fixed-window difference), octave-error repair, creaky-voice detection | `src/analysis/pitch.ts`, `src/analysis/yinDifference.ts` |
 | Hz → semitones → Chao 1–5 using a speaker range (5th–95th percentile) | `src/analysis/normalize.ts` |
 | Syllable segmentation with a known syllable count (gaps, energy dips, pitch breaks) | `src/analysis/segment.ts` |
 | Per-syllable height/shape scoring, notes | `src/analysis/score.ts` |
@@ -122,6 +123,11 @@ the expected tones (catching wrong polyphone readings and missing neutral tones)
 | Whole-line DTW comparison for shadowing | `src/analysis/shadow.ts` |
 | Ear training: adaptive item choice, clip splitting and timing | `src/ear/` |
 | Lexical/surface tones, sandhi | `src/g2p/tones.ts` |
+
+To compare the FFT YIN analyzer with the original direct implementation on the
+recorded bank, run `npx tsx scripts/check-pitch.ts 100` (requires `ffmpeg`). This
+checks pitch and voicing frame by frame and times analysis separately from decoding.
+Omit the number to check the entire bank, including alternate voices.
 
 Creaky voice — common at the bottom of T3 and T4 — has no measurable pitch, so
 loud unpitched frames right after voicing are treated as creak and drawn as a

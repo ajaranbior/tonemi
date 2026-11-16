@@ -1,17 +1,17 @@
 name: Deploy to GitHub Pages
 
-# Builds the static site on every push to main and publishes dist/ to the
-# gh-pages branch, which GitHub Pages serves.
+# Check branches and pull requests; publish successful main builds only.
 on:
   push:
-    branches: [main]
+    branches-ignore: [gh-pages]
+  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: pages
+  group: pages-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -28,6 +28,7 @@ jobs:
       - run: npm test
       - run: npm run build
       - name: Publish dist/ to gh-pages
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         working-directory: dist
         run: |
           touch .nojekyll

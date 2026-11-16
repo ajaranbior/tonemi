@@ -29,6 +29,36 @@ export const plainItem = (item: BankItem): EarItem => ({ ...item, url: audioUrl(
 /** The real word behind an asked item (itself unless retoned). */
 export const realItem = (item: EarItem | BankItem): BankItem => ('from' in item && item.from) || item
 
+/** URLs created for a question, never the bank's static recording URL. */
+function generatedUrls(item: EarItem): string[] {
+  return [...(item.from ? [item.url] : []), ...(item.qUrl ? [item.qUrl] : [])]
+}
+
+export function releaseItem(item: EarItem) {
+  generatedUrls(item).forEach((url) => URL.revokeObjectURL(url))
+}
+
+/** Retain live/review audio, freeing skipped questions, replaced voices and evicted trials. */
+export class EarAudioPool {
+  private urls = new Set<string>()
+
+  add(item: EarItem) {
+    generatedUrls(item).forEach((url) => this.urls.add(url))
+  }
+
+  retain(items: EarItem[]) {
+    const kept = new Set(items.flatMap(generatedUrls))
+    for (const url of this.urls) {
+      if (!kept.has(url)) {
+        URL.revokeObjectURL(url)
+        this.urls.delete(url)
+      }
+    }
+  }
+
+  clear() { this.retain([]) }
+}
+
 export function voiceOf(manifest: Manifest, item: BankItem, samples: Float32Array): Voice {
   return {
     samples,

@@ -35,6 +35,11 @@ export default function ShadowPage({ range }: { range: SpeakerRange }) {
   const [phase, setPhase] = useState<Phase>('idle')
   const [rate, setRate] = useState(1)
   const [loop, setLoop] = useState(false)
+  const loopEnabled = useRef(false)
+  const changeLoop = (on: boolean) => {
+    loopEnabled.current = on
+    setLoop(on)
+  }
   const [showPinyin, setShowPinyin] = useState(true)
   const [cursor, setCursor] = useState<number | undefined>()
   const mediaEl = useRef<HTMLVideoElement & HTMLAudioElement>(null)
@@ -128,8 +133,8 @@ export default function ShadowPage({ range }: { range: SpeakerRange }) {
     stopLoop.current = false
     do {
       await playCue(cue)
-      if (loop) await new Promise((r) => setTimeout(r, 600))
-    } while (loop && !stopLoop.current)
+      if (loopEnabled.current && !stopLoop.current) await new Promise((r) => setTimeout(r, 600))
+    } while (loopEnabled.current && !stopLoop.current)
     setPhase('idle')
   }
 
@@ -251,7 +256,7 @@ export default function ShadowPage({ range }: { range: SpeakerRange }) {
             <button onClick={() => setRate(rate === 1 ? 0.75 : 1)} disabled={phase !== 'idle'}>{rate === 1 ? '1×' : '0.75×'}</button>
           </div>
           <div className="toggles">
-            <Toggle label="Loop line" value={loop} onChange={setLoop} />
+            <Toggle label="Loop line" value={loop} onChange={changeLoop} />
             <Toggle label="Pinyin" value={showPinyin} onChange={setShowPinyin} />
           </div>
           <p className="muted small">Echo: listen, then repeat. Shadow: speak along with the audio — use headphones.</p>

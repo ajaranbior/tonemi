@@ -55,7 +55,8 @@ See [docs/DESIGN.md](docs/DESIGN.md) for the concept and roadmap.
 
 ## More real voices
 
-The bank includes Yue Tan for all 504 words and Chen Wang for 53 of the 64 single-syllable items.
+The bank includes Yue Tan for all 696 words and Chen Wang for 200 of the 256 single-syllable items.
+There are 64 single-syllable words per tone, with 64 distinct syllable sounds within each tone.
 Human recordings are enabled by default; synthetic voices start off, including on existing installations.
 To rebuild Chen Wang's additions from an [audio-cmn](https://github.com/hugolpz/audio-cmn) clone (needs `ffmpeg`):
 
@@ -63,6 +64,8 @@ To rebuild Chen Wang's additions from an [audio-cmn](https://github.com/hugolpz/
 git -C /path/to/audio-cmn checkout HEAD -- 64k/syllabs
 npm run build-syllables -- /path/to/audio-cmn
 ```
+
+Use `APPEND=1` to add missing Chen Wang recordings while preserving existing recordings and pitch references.
 
 The importer matches toned pinyin, checks segmentation and pitch, and copies accepted original MP3s
 unchanged. It preserves word IDs, progress, other voices and recording exclusions. Attribution is shown
@@ -106,7 +109,7 @@ yt-dlp -x --audio-format m4a --write-subs --write-auto-subs --sub-langs zh-Hans 
 
 ## Word bank
 
-`public/bank/` (≈6 MB, committed) is generated from
+`public/bank/` (≈15 MB, committed) is generated from
 [audio-cmn](https://github.com/hugolpz/audio-cmn) — native recordings by Yue Tan
 (Shtooka project), CC BY-SA. To regenerate (needs `ffmpeg`):
 
@@ -118,10 +121,21 @@ npm run build-bank -- /tmp/audio-cmn
 Adding `FILL=1` before `npm run build-bank` instead *adds* recordings for tone patterns that have fewer than 4 items,
 keeping every existing item and id (so saved progress stays valid).
 
+To expand only single-syllable words without rebuilding the bank:
+
+```bash
+SINGLE_PER_TONE=64 npm run build-bank -- /path/to/audio-cmn
+```
+
+This adds common HSK 1–6 words, favors syllable sounds not already represented in each tone, and
+keeps the normal pitch check. Existing items, recordings, IDs, progress and exclusions are preserved.
+Running it again at the same target leaves the bank unchanged. Check out the matching `64k/syllabs`
+files and run `APPEND=1 npm run build-syllables -- /path/to/audio-cmn` to add a second human voice.
+
 **Extra voices.** `npm run build-voices` (needs `pip install edge-tts` and `ffmpeg`) has five Microsoft Edge neural
 voices say every bank word, keeps only clips that pass the same pitch check, and stores them as extra recordings
-(`alts`) of the existing words, so ids and progress don't change. About half the clips pass, so 402 of the 504
-words have at least one synthetic voice. Each word is played by a random enabled voice. Experiments
+(`alts`) of the existing words, so ids and progress don't change. Currently 392 of the 696
+words have at least one synthetic voice; the latest 192 additions use human recordings. Each word is played by a random enabled voice. Experiments
 (in Ear, or inside Drill settings) enables synthetic voices by syllable count and lets you switch individual
 synthetic speakers off. These choices are shared by Drills and Ear and apply to the next question.
 Excluding a recording only affects that word and speaker, across both modes; switching categories or

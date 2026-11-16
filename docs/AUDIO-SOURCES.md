@@ -2,12 +2,16 @@
 
 ## Included
 
-- **Yue Tan:** original word bank, 504 items. Shtooka recordings via
+- **Yue Tan:** full word bank, 696 items, including 256 single-syllable words (64 per tone).
+  The latest expansion adds 192 common HSK 1–6 words with distinct syllable sounds within each tone.
+  `SINGLE_PER_TONE=64 npm run build-bank -- <clone>` appends words with the normal pitch check,
+  preserving existing items, IDs and recordings. Shtooka recordings via
   [audio-cmn](https://github.com/hugolpz/audio-cmn#voices), credited as CC BY-SA upstream.
 - **Chen Wang:** audio-cmn's separate `64k/syllabs` collection, credited as CC BY-SA upstream.
   `npm run build-syllables -- <clone>` adds alternate recordings for existing single-syllable items
-  by matching pinyin and tone. The current import keeps 53/64 clips: 16 tone 1, 16 tone 2, 15 tone 3,
-  and 6 tone 4. Others remain covered by Yue Tan. MP3s are copied unchanged; reference pitch is
+  by matching pinyin and tone. The current bank has 200/256 clips: 64 tone 1, 63 tone 2, 52 tone 3,
+  and 21 tone 4. The latest import adds 147 recordings using `APPEND=1`, preserving the earlier 53
+  recordings and the speaker's calibrated range. Others remain covered by Yue Tan. MP3s are copied unchanged; reference pitch is
   measured on those originals. The pitch check is automated; no manual listening review is claimed.
 
 ## Further sources checked, 2026-11-16

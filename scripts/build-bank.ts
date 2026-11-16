@@ -6,6 +6,8 @@
  *
  * FILL=1 adds recordings to the existing bank without touching it: only for tone patterns
  * (as pronounced) that have fewer than MIN_PER_PATTERN items, with new, non-clashing ids.
+ * SINGLE_PER_TONE=64 only expands single-syllable words to that many per tone, preserving
+ * all existing items, voices and IDs and using the normal (stricter) pitch check.
  *
  * Every clip is pitch-analysed with the app's own pipeline; clips whose contour
  * contradicts the expected tones are dropped, which also weeds out wrong
@@ -28,8 +30,12 @@ if (!process.argv[2]) throw new Error('usage: tsx scripts/build-bank.ts <audio-c
 const OUT = resolve('public/bank')
 const QUALITY = '64k'
 const FILL = process.env.FILL === '1'
+const SINGLE_PER_TONE = process.env.SINGLE_PER_TONE === undefined ? null : Number(process.env.SINGLE_PER_TONE)
+if (SINGLE_PER_TONE !== null && (!Number.isSafeInteger(SINGLE_PER_TONE) || SINGLE_PER_TONE < 1)) throw new Error('SINGLE_PER_TONE must be a positive integer')
+if (FILL && SINGLE_PER_TONE !== null) throw new Error('Choose either FILL or SINGLE_PER_TONE')
+const APPEND = FILL || SINGLE_PER_TONE !== null
 const MIN_PER_PATTERN = 4
-const existing: Manifest | null = FILL ? JSON.parse(readFileSync(join(OUT, 'manifest.json'), 'utf8')) : null
+const existing: Manifest | null = APPEND ? JSON.parse(readFileSync(join(OUT, 'manifest.json'), 'utf8')) : null
 const coverage = (surface: string) => existing!.items.filter((i) => i.surface.join('') === surface).length
 /** Fill mode relaxes the pitch check, so known neutral-final words (老太太 lǎotàitai) are skipped by hand. */
 const FILL_SKIP = ['老太太', '老人家']
@@ -131,10 +137,30 @@ const candidates: Candidate[] = []
 if (FILL) {
   for (const list of byCombo.values())
     for (const c of list) if (!haveWord.has(c.hanzi) && c.alternatives.some((a) => coverage(a.join('')) < MIN_PER_PATTERN)) candidates.push(c)
+} else if (SINGLE_PER_TONE !== null) {
+  for (const [combo, list] of byCombo) {
+    if (list[0].kind !== 'single') continue
+    const missing = Math.max(0, SINGLE_PER_TONE - coverage(combo))
+    if (!missing) continue
+    // Favor new syllable sounds over homophones already represented in this tone.
+    const used = new Set(existing!.items.filter((i) => i.kind === 'single' && i.combo === combo).map((i) => i.syllables[0]))
+    const ranked = pickCandidates(list.filter((c) => !haveWord.has(c.hanzi) && c.level <= 6), list.length)
+    const diverse: Candidate[] = []
+    const repeats: Candidate[] = []
+    for (const c of ranked) {
+      if (used.has(c.syllables[0])) repeats.push(c)
+      else { diverse.push(c); used.add(c.syllables[0]) }
+    }
+    candidates.push(...[...diverse, ...repeats].slice(0, missing * 3))
+  }
 } else {
   for (const [, list] of byCombo) candidates.push(...pickCandidates(list, CAPS[list[0].kind].candidates))
 }
 console.log(`${files.length} files, ${byCombo.size} combos, ${candidates.length} candidates`)
+if (!candidates.length) {
+  console.log('No additions needed; the existing bank is unchanged')
+  process.exit(0)
+}
 
 // --- 2. fetch + analyse ------------------------------------------------------
 const pathspec = join(repo, '.bank-paths')
@@ -186,7 +212,7 @@ for (const c of candidates) {
 }
 
 // --- 4. select + write -------------------------------------------------------
-if (!FILL) rmSync(OUT, { recursive: true, force: true })
+if (!APPEND) rmSync(OUT, { recursive: true, force: true })
 mkdirSync(join(OUT, 'audio'), { recursive: true })
 const items: BankItem[] = existing ? [...existing.items] : []
 const round1 = (x: number) => Math.round(x * 10) / 10
@@ -202,6 +228,9 @@ for (const [combo, list] of [...accepted].sort(([a], [b]) => a.localeCompare(b))
       added.set(key, (added.get(key) ?? 0) + 1)
       return true
     })
+  } else if (SINGLE_PER_TONE !== null) {
+    // Preserve the diversity ranking above after removing failed pitch checks.
+    keep = list.map((a) => a.c).slice(0, Math.max(0, SINGLE_PER_TONE - coverage(combo)))
   }
   for (const c of keep) {
     const a = list.find((x) => x.c === c)!
@@ -209,7 +238,9 @@ for (const [combo, list] of [...accepted].sort(([a], [b]) => a.localeCompare(b))
     // Trim to the utterance ± 10 frames.
     const from = Math.max(0, a.seg.segments[0][0] - 10)
     const to = Math.min(track.hz.length, a.seg.segments.at(-1)![1] + 10)
-    const id = `${combo}-${items.filter((i) => i.combo === combo).length}`
+    let suffix = items.filter((i) => i.combo === combo).length
+    while (items.some((i) => i.id === `${combo}-${suffix}`)) suffix++
+    const id = `${combo}-${suffix}`
     copyFileSync(join(repo, c.path), join(OUT, 'audio', `${id}.mp3`))
     items.push({
       id, hanzi: c.hanzi, syllables: c.syllables, lexical: c.lexical, surface: a.surface, combo,

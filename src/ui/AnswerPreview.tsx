@@ -186,7 +186,10 @@ function OtherWord({ chosen, exclude, syllables, switcher }: { chosen: Tone[]; e
     setPlaying(true)
     try {
       if (item) await playUrl(audioUrl(item), 1, (t) => setCursor(Number.isNaN(t) ? undefined : t - item.ref.t0))
-      else await playUrl(wavUrl(synthTones(chosen, range)))
+      else {
+        const hum = wavUrl(synthTones(chosen, range))
+        await playUrl(hum).finally(() => URL.revokeObjectURL(hum))
+      }
     } catch {
       // ignore: nothing useful to show for a failed preview
     }

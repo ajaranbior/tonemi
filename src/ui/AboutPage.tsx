@@ -13,7 +13,7 @@ export function AboutPage() {
       <section className="card">
         <h2>How it works</h2>
         <ul className="small">
-          <li>Pitch is tracked in your browser (McLeod pitch method), converted to semitones and mapped onto Chao levels 1–5 using your calibrated range. The native speaker is mapped onto their own range, so heights compare fairly.</li>
+          <li>Pitch is tracked in your browser (YIN), converted to semitones and mapped onto Chao levels 1–5 using your calibrated range. The native speaker is mapped onto their own range, so heights compare fairly.</li>
           <li>Whole words are normalised together, so relative height between syllables counts — e.g. whether the 1 in 2+1 really sits above the end of the rise.</li>
           <li>Drills split your attempt into syllables at voicing gaps and energy dips, then compare each syllable's height and shape with the native recording. "Heard" labels come from simple tone templates and are a hint, not a verdict.</li>
           <li>Shadowing compares the whole line's melody (time-aligned with DTW) — no per-syllable matching yet.</li>

@@ -69,8 +69,8 @@ export function SandhiNote({ syllables, expected, lexical }: SandhiProps) {
   if (!rows.length) return null
   return (
     <ul className="sandhi">
-      {rows.map((r) => (
-        <li key={r.s} className="small muted">
+      {rows.map((r, i) => (
+        <li key={i} className="small muted">
           <strong>{r.s}</strong> is written {toneWord(r.lex)} but pronounced {toneWord(r.spoken)} (tone sandhi).
         </li>
       ))}

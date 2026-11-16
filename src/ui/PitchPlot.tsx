@@ -159,10 +159,6 @@ const PLOT_BOTTOM = 6
 /** Space above the plot for the labels. */
 const plotTop = (labels: PlotLabel[]) => (labels.some((l) => l.target !== undefined && l.ok === false) ? 86 : labels.length ? 52 : 6)
 
-function css(name: string): string {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
-}
-
 function paint(
   el: HTMLCanvasElement,
   { w, h }: { w: number; h: number },
@@ -170,8 +166,15 @@ function paint(
 ) {
   if (!w || !h) return
   const dpr = window.devicePixelRatio || 1
-  el.width = Math.round(w * dpr)
-  el.height = Math.round(h * dpr)
+  // Assigning a canvas size reallocates it, so only on a real change (this runs every frame of a playhead).
+  const cw = Math.round(w * dpr)
+  const ch = Math.round(h * dpr)
+  if (el.width !== cw || el.height !== ch) {
+    el.width = cw
+    el.height = ch
+  }
+  const style = getComputedStyle(document.documentElement)
+  const css = (name: string) => style.getPropertyValue(name).trim()
   const g = el.getContext('2d')!
   g.setTransform(dpr, 0, 0, dpr, 0, 0)
   g.clearRect(0, 0, w, h)

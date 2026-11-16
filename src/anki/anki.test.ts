@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { AUTO, NONE, noteClip, plainText, sample, soundFiles, type AnkiNote } from './connect'
-import { stitch, wavBlob } from './stitch'
+import { wavBlob } from '../audio/wav'
+import { stitch } from './stitch'
 
 const note = (fields: Record<string, string>): AnkiNote => ({
   noteId: 1,

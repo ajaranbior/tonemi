@@ -1,4 +1,5 @@
 import { SR } from '../analysis/pitch'
+import { wavBlob } from './wav'
 
 let current: HTMLAudioElement | null = null
 
@@ -37,30 +38,8 @@ export function stopPlayback() {
   }
 }
 
-/** 16-bit PCM WAV blob URL for 16 kHz mono samples. */
-export function wavUrl(samples: Float32Array): string {
-  const buf = new ArrayBuffer(44 + samples.length * 2)
-  const v = new DataView(buf)
-  const str = (o: number, s: string) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)))
-  str(0, 'RIFF')
-  v.setUint32(4, 36 + samples.length * 2, true)
-  str(8, 'WAVE')
-  str(12, 'fmt ')
-  v.setUint32(16, 16, true)
-  v.setUint16(20, 1, true)
-  v.setUint16(22, 1, true)
-  v.setUint32(24, SR, true)
-  v.setUint32(28, SR * 2, true)
-  v.setUint16(32, 2, true)
-  v.setUint16(34, 16, true)
-  str(36, 'data')
-  v.setUint32(40, samples.length * 2, true)
-  for (let i = 0; i < samples.length; i++) {
-    const s = Math.max(-1, Math.min(1, samples[i]))
-    v.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true)
-  }
-  return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }))
-}
+/** 16-bit PCM WAV blob URL for 16 kHz mono samples. Revoke it (URL.revokeObjectURL) when it is no longer played. */
+export const wavUrl = (samples: Float32Array): string => URL.createObjectURL(wavBlob(samples, SR))
 
 /**
  * Play URLs one after another with `gap` seconds between. `onStep` gets the index being played, then

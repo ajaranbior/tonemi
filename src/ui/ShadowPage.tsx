@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { chaoTrack, rangeFromSemitones, type SpeakerRange } from '../analysis/normalize'
-import { hzToSt, trackPitch, type PitchTrack } from '../analysis/pitch'
+import { chaoTrack, rangeWithin, type SpeakerRange } from '../analysis/normalize'
+import { trackPitch, type PitchTrack } from '../analysis/pitch'
 import { trackInWorker } from '../analysis/trackInWorker'
 import { compareLine, voicedSeq, type ShadowResult } from '../analysis/shadow'
 import { audioContext } from '../audio/context'
@@ -67,12 +67,7 @@ export default function ShadowPage({ range }: { range: SpeakerRange }) {
   const nativeReady = useMemo(() => {
     if (!native) return null
     const track = native
-    const st: number[] = []
-    const within = (i: number) => !cues.length || cues.some((c) => i * track.hop >= c.start && i * track.hop <= c.end)
-    track.hz.forEach((hz, i) => {
-      if (!Number.isNaN(hz) && within(i)) st.push(hzToSt(hz))
-    })
-    const r = rangeFromSemitones(st)
+    const r = rangeWithin(track, cues)
     if (!r) return null
     return { track, range: r, chao: chaoTrack(track, r) }
   }, [native, cues])
@@ -89,13 +84,25 @@ export default function ShadowPage({ range }: { range: SpeakerRange }) {
     setAttempts({})
   }
 
-  useEffect(() => () => stopPlayback(), [])
+  // Leaving the page: stop the line, the loop and the microphone. (The media ref is already cleared
+  // when this runs, hence `playingEl`.)
+  const playingEl = useRef<HTMLMediaElement | null>(null)
+  useEffect(
+    () => () => {
+      stopPlayback()
+      stopLoop.current = true
+      playingEl.current?.pause()
+      rec.current?.stop()
+    },
+    [],
+  )
 
   const cue = cues[index]
 
   const playCue = async (c: Cue) => {
     const el = mediaEl.current
     if (!el) return
+    playingEl.current = el
     el.currentTime = c.start
     el.playbackRate = rate
     el.preservesPitch = true

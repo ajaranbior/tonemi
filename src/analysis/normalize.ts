@@ -30,6 +30,22 @@ export function voicedSemitones(track: PitchTrack): number[] {
   return out
 }
 
+/**
+ * A speaker's range from the voiced frames inside `spans` (seconds, e.g. subtitle cues), so music and
+ * noise between lines don't widen it. With no spans, the whole track is used.
+ */
+export function rangeWithin(track: PitchTrack, spans: readonly { start: number; end: number }[]): SpeakerRange | null {
+  const n = track.hz.length
+  const use = new Uint8Array(n).fill(spans.length ? 0 : 1)
+  for (const { start, end } of spans) {
+    const to = Math.min(n - 1, Math.floor(end / track.hop))
+    for (let i = Math.max(0, Math.ceil(start / track.hop)); i <= to; i++) use[i] = 1
+  }
+  const st: number[] = []
+  for (let i = 0; i < n; i++) if (use[i] && !Number.isNaN(track.hz[i])) st.push(hzToSt(track.hz[i]))
+  return rangeFromSemitones(st)
+}
+
 export function stToChao(st: number, r: SpeakerRange): number {
   return 1 + (4 * (st - r.lo)) / (r.hi - r.lo)
 }

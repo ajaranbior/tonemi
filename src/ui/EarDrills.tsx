@@ -12,6 +12,7 @@ import { FEEDBACK_SECONDS, playFeedback } from '../audio/sfx'
 import { ReferenceChart, type EarProps } from './EarBank'
 import { answerUrl, prepareItem, type EarItem } from './earItem'
 import { EarStage, ResultChip } from './EarStage'
+import { inField } from './keys'
 import { marked } from './tone'
 import { ToneGlyph } from './ToneGlyph'
 
@@ -207,7 +208,7 @@ export function EarContrast({ onAnswered }: Pick<EarProps, 'onAnswered'>) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey || !q) return
+      if (e.metaKey || e.ctrlKey || e.altKey || !q || inField(e)) return
       if (e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'e' || e.key === 'E') {
         e.preventDefault()
         forward()
@@ -440,7 +441,7 @@ export function EarSameDiff({ onAnswered }: Pick<EarProps, 'onAnswered'>) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey || !q) return
+      if (e.metaKey || e.ctrlKey || e.altKey || !q || inField(e)) return
       if (e.key === 'Enter' || e.key === 'ArrowRight') {
         if (said !== null) next()
       } else if (e.key === ' ' || e.key === 'r' || e.key === 'R') {

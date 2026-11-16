@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { chaoTrack, rangeFromSemitones, voicedSemitones, type SpeakerRange } from '../analysis/normalize'
 import { stToHz, trackPitch } from '../analysis/pitch'
 import { startRecording, type Recording } from '../audio/recorder'
@@ -23,6 +23,15 @@ export function CalibratePage({ range, calibrated, onSave }: Props) {
   const [result, setResult] = useState<{ range: SpeakerRange; line: PlotLine; duration: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const rec = useRef<Recording | null>(null)
+  // Leaving the page releases the microphone.
+  const alive = useRef(true)
+  useEffect(() => {
+    alive.current = true
+    return () => {
+      alive.current = false
+      rec.current?.stop()
+    }
+  }, [])
 
   const start = async () => {
     setError(null)
@@ -30,6 +39,7 @@ export function CalibratePage({ range, calibrated, onSave }: Props) {
     setRecording(true)
     try {
       rec.current = await startRecording({ maxSeconds: 25, silenceStop: 2.5 })
+      if (!alive.current) rec.current.stop()
       const samples = await rec.current.done
       const track = trackPitch(samples)
       const r = rangeFromSemitones(voicedSemitones(track))

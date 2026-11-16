@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { chaoTrack } from './normalize'
-import { hzToSt, SR, trackPitch } from './pitch'
+import { chaoTrack, rangeWithin } from './normalize'
+import { hzToSt, SR, stToHz, trackPitch, type PitchTrack } from './pitch'
 import { compareToReference } from './score'
 import { segmentSyllables } from './segment'
 import { recognizeTone } from './tones'
@@ -83,5 +83,29 @@ describe('segmentation + recognition', () => {
     const res = compareToReference({ chao: chaoTrack(flat, range), segments: fseg.segments }, ref, [2, 4])
     expect(res.score!).toBeLessThan(70)
     expect(res.rangeRatio!).toBeLessThan(0.5)
+  })
+})
+
+describe('rangeWithin', () => {
+  // 100 frames low (st 10..14), then 100 frames high (st 30..34).
+  const st = (i: number) => (i < 100 ? 10 : 30) + (i % 5)
+  const n = 200
+  const track: PitchTrack = { hop: 0.01, hz: Float32Array.from({ length: n }, (_, i) => stToHz(st(i))), rms: new Float32Array(n), zcr: new Float32Array(n), creak: new Uint8Array(n) }
+
+  it('uses only the voiced frames inside the spans', () => {
+    const r = rangeWithin(track, [{ start: 0.1, end: 0.9 }])!
+    expect(r.lo).toBeGreaterThan(9.99)
+    expect(r.hi).toBeLessThanOrEqual(14.01)
+  })
+
+  it('uses the whole track when there are no spans', () => {
+    const r = rangeWithin(track, [])!
+    expect(r.lo).toBeLessThan(15)
+    expect(r.hi).toBeGreaterThan(29)
+  })
+
+  it('is null without enough voiced speech in the spans', () => {
+    expect(rangeWithin(track, [{ start: 0.5, end: 0.6 }])).toBeNull()
+    expect(rangeWithin(track, [{ start: 5, end: 6 }])).toBeNull()
   })
 })

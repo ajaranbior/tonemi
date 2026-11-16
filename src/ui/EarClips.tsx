@@ -1,6 +1,6 @@
 import { pinyin as toPinyin } from 'pinyin-pro'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { chaoTrack, rangeFromSemitones, type SpeakerRange } from '../analysis/normalize'
+import { chaoTrack, rangeWithin, type SpeakerRange } from '../analysis/normalize'
 import { hzToSt, type PitchTrack } from '../analysis/pitch'
 import { segmentSyllables, type Segment } from '../analysis/segment'
 import type { Tone } from '../analysis/tones'
@@ -8,7 +8,7 @@ import { trackInWorker } from '../analysis/trackInWorker'
 import { audioContext } from '../audio/context'
 import { decodeTo16k } from '../audio/resample'
 import { playSpan, stopSpan } from '../audio/span'
-import { buildClips, cueCharTimes, frameTime, hanIndex } from '../ear/chunks'
+import { buildClips, cueCharTimes, FRAME_CENTER, frameTime, hanIndex } from '../ear/chunks'
 import { clearRetry, dueRetry, grade, pickByCombo, scheduleRetry, updateStat, type Retry } from '../ear/adapt'
 import { sentenceTones } from '../g2p/tones'
 import { markedSyllable } from './tone'
@@ -25,8 +25,9 @@ import { SandhiNote, ToneAnswer } from './ToneAnswer'
 import type { EarProps } from './EarBank'
 import { turnedGreen } from '../ear/game'
 import { useReview } from './useReview'
+import { inField } from './keys'
 import { AnkiSource, type AnkiLoaded } from './AnkiSource'
-import { wavBlob } from '../anki/stitch'
+import { wavBlob } from '../audio/wav'
 import { SR } from '../analysis/pitch'
 import { FEEDBACK_SECONDS, playFeedback } from '../audio/sfx'
 
@@ -80,11 +81,14 @@ export default function EarClips({ onAnswered, onOverride, game, onGame, source 
   const [sound, setSound] = useState(() => getPref<boolean>('ear.sound', true))
   const [autoReveal, setAutoReveal] = useState(() => getPref<boolean>('ear.auto', true))
   const review = useReview<Clip>()
+  const { record, leave } = review
   const mediaEl = useRef<HTMLVideoElement & HTMLAudioElement>(null)
   const playToken = useRef(0)
   const trial = useRef(0)
   const retry = useRef<Retry[]>([])
   const autoplay = useRef(false)
+  /** Bumped per question, so a replay scheduled for one doesn't start over the next. */
+  const question = useRef(0)
 
   const loadFiles = async (files: FileList | null) => {
     if (!files) return
@@ -198,10 +202,7 @@ export default function EarClips({ onAnswered, onOverride, game, onGame, source 
   // Speaker range and Chao track from the voiced speech inside the cues.
   const ready = useMemo(() => {
     if (!native) return null
-    const st: number[] = []
-    const within = (i: number) => !cues.length || cues.some((c) => i * native.hop >= c.start && i * native.hop <= c.end)
-    native.hz.forEach((hz, i) => !Number.isNaN(hz) && within(i) && st.push(hzToSt(hz)))
-    const range = rangeFromSemitones(st)
+    const range = rangeWithin(native, cues)
     return range ? { track: native, range, chao: chaoTrack(native, range) } : null
   }, [native, cues])
 
@@ -216,17 +217,18 @@ export default function EarClips({ onAnswered, onOverride, game, onGame, source 
         pick = pickByCombo(pool, (c) => c.key, getEarCombos())
       }
       if (!pick) return
-      if (clip && answered) review.record({ item: clip, chosen, accepted, rec: lastRec.current ?? undefined })
-      review.leave()
+      if (clip && answered) record({ item: clip, chosen, accepted, rec: lastRec.current ?? undefined })
+      leave()
       setAccepted(false)
       setComeback(false)
       lastRec.current = null
       autoplay.current = play
+      question.current++
       setClip(pick)
       setChosen(pick.tones.map(() => null))
       setAnswered(false)
     },
-    [clips, clip, chosen, answered, accepted, review.record, review.leave],
+    [clips, clip, chosen, answered, accepted, record, leave],
   )
 
   useEffect(() => {
@@ -288,7 +290,8 @@ export default function EarClips({ onAnswered, onOverride, game, onGame, source 
     setComeback(back)
     onAnswered(g.all, { comeback: back, milestone: turnedGreen(before?.ema, stat.ema, stat.n) ? [...clip.key].join('-') : undefined })
     if (sound) playFeedback(g.all, game && back)
-    if (!g.all) setTimeout(() => void play(clip), sound ? FEEDBACK_SECONDS * 1000 : 0)
+    const asked = question.current
+    if (!g.all) setTimeout(() => asked === question.current && void play(clip), sound ? FEEDBACK_SECONDS * 1000 : 0)
   }, [clip, answered, chosen, onAnswered, play, sound, game])
 
   const rv = review.reviewing
@@ -347,7 +350,7 @@ export default function EarClips({ onAnswered, onOverride, game, onGame, source 
   // ← or Q goes back to the previous clip, → or E forward / next.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey || !clip) return
+      if (e.metaKey || e.ctrlKey || e.altKey || !clip || inField(e)) return
       if (e.key === 'Enter') {
         e.preventDefault()
         if (sAnswered) advance()
@@ -372,7 +375,7 @@ export default function EarClips({ onAnswered, onOverride, game, onGame, source 
       }
     }
     // A focused button would otherwise "click" on Space release.
-    const onUp = (e: KeyboardEvent) => e.key === ' ' && e.preventDefault()
+    const onUp = (e: KeyboardEvent) => e.key === ' ' && !inField(e) && e.preventDefault()
     window.addEventListener('keydown', onKey)
     window.addEventListener('keyup', onUp)
     return () => {
@@ -530,8 +533,8 @@ function clipView(span: [number, number] | null, track: PitchTrack, n: number): 
   if (!span) return null
   const hop = track.hop
   const len = track.hz.length
-  const a = Math.max(0, Math.floor((span[0] + PAD_BEFORE - 0.032) / hop))
-  const b = Math.min(len, Math.ceil((span[1] - PAD_AFTER - 0.032) / hop))
+  const a = Math.max(0, Math.floor((span[0] + PAD_BEFORE - FRAME_CENTER) / hop))
+  const b = Math.min(len, Math.ceil((span[1] - PAD_AFTER - FRAME_CENTER) / hop))
   if (b - a < 6) return null
   const from = Math.max(0, a - 10)
   const to = Math.min(len, b + 10)
@@ -580,11 +583,11 @@ function ClipChart({ clip, chosen, ready, span, cursor, samples }: { clip: Clip;
     { t: Array.from({ length: to - from }, (_, i) => i * hop), v: chao.subarray(from, to), kind: 'ref' },
   ]
   if (guess) lines.push(guess)
-  const playhead = cursor !== undefined && span ? cursor - from * hop - 0.032 : undefined
+  const playhead = cursor !== undefined && span ? cursor - from * hop - FRAME_CENTER : undefined
   return (
     <>
       <div className="stage-plot">
-        <PitchPlot lines={lines} duration={(to - from) * hop} labels={labels} boundaries={boundaries} cursor={playhead} height="100%" scrub={{ samples, offset: from * hop + 0.032 }} />
+        <PitchPlot lines={lines} duration={(to - from) * hop} labels={labels} boundaries={boundaries} cursor={playhead} height="100%" scrub={{ samples, offset: from * hop + FRAME_CENTER }} />
       </div>
       <div className="legend">
         <span className="key ref" /> speaker

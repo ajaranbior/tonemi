@@ -59,6 +59,19 @@ export function DrillPage({ range, calibrated, onCalibrate }: Props) {
     loadManifest().then(setManifest, (e) => setError(String(e)))
   }, [])
 
+  // Leaving the page stops the audio and the microphone, and nothing starts afterwards.
+  const alive = useRef(true)
+  useEffect(() => {
+    alive.current = true
+    return () => {
+      alive.current = false
+      stopPlayback()
+      recording.current?.stop()
+    }
+  }, [])
+  // A replaced attempt's recording is no longer playable: free it.
+  useEffect(() => () => { if (attempt) URL.revokeObjectURL(attempt.wav) }, [attempt])
+
   const refRange = manifest && item ? manifest.speakers[item.speaker].range : null
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const items = useMemo(() => (manifest ? usableItems(manifest) : []), [manifest, voiceTick])
@@ -119,6 +132,7 @@ export function DrillPage({ range, calibrated, onCalibrate }: Props) {
           v.push(Number.isNaN(f.hz) ? NaN : stToChao(hzToSt(f.hz), range))
         },
       })
+      if (!alive.current) recording.current.stop()
       raf = requestAnimationFrame(tick)
       const samples = await recording.current.done
       cancelAnimationFrame(raf)
@@ -143,13 +157,15 @@ export function DrillPage({ range, calibrated, onCalibrate }: Props) {
     if (!item) return
     if (phase === 'recording') return
     setPhase('listening')
+    let played = true
     try {
       await playUrl(audioUrl(item), rate)
     } catch (e) {
+      played = false
       setError(String(e))
     }
     setPhase('idle')
-    if (autoRecord && rate === 1) void record()
+    if (played && alive.current && autoRecord && rate === 1) void record()
   }
 
   const playBoth = async () => {

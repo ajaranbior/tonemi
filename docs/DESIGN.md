@@ -1,11 +1,13 @@
 # tonemi — design proposal
 
-> **Status (MVP built):** browser-only app with calibration, tone drills on a
-> 466-clip native word bank (audio-cmn), and shadowing with your own media +
-> subtitles scored by whole-line DTW. Deviations from the plan below: pitch is
-> tracked with a custom YIN (pitchy picked formants on real speech), creaky
-> voice is modelled explicitly, and per-syllable alignment for read-aloud /
-> shadowing is deferred.
+> **Status:** this is the original proposal, kept for the reasoning behind the design. What is built
+> is described in the [README](../README.md): a browser-only app with calibration, tone drills on a
+> native word bank (audio-cmn, plus optional extra voices), shadowing with your own media + subtitles
+> scored by whole-line DTW, and **ear training** (tone recognition on bank words, your own video or
+> your Anki cards), which grew out of the app later and is not covered below. Deviations from the
+> plan: pitch is tracked with a custom YIN (pitchy picked formants on real speech), creaky voice is
+> modelled explicitly, there is no helper server, read-aloud and per-syllable alignment for
+> shadowing are not built, and the bank ships as mp3 without a service worker.
 
 Target user: someone who already knows tone theory (Chao values, 3rd tone is low,
 sandhi, coarticulation) and wants to **produce** tones better. The app is about

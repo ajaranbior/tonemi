@@ -47,7 +47,9 @@ export async function startRecording(opts: RecordOptions): Promise<Recording> {
   const ctx = audioContext()
   if (!workletLoaded) {
     const url = URL.createObjectURL(new Blob([WORKLET], { type: 'application/javascript' }))
-    workletLoaded = ctx.audioWorklet.addModule(url)
+    workletLoaded = ctx.audioWorklet.addModule(url).finally(() => URL.revokeObjectURL(url))
+    // A failed load must not stick: the next recording tries again.
+    workletLoaded.catch(() => (workletLoaded = null))
   }
   await workletLoaded
   const stream = await navigator.mediaDevices.getUserMedia({

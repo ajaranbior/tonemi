@@ -21,7 +21,7 @@ export function useReview<T>() {
   const back = () => canBack && setIndex((index ?? history.length) - 1)
   /** Step toward the present; returns to the live trial after the last one. */
   const forward = () => setIndex(index !== null && index + 1 < history.length ? index + 1 : null)
-  const leave = () => setIndex(null)
+  const leave = useCallback(() => setIndex(null), [])
   const update = useCallback((i: number, patch: Partial<Trial<T>>) => setHistory((h) => h.map((t, k) => (k === i ? { ...t, ...patch } : t))), [])
 
   return { record, update, history, reviewing, canBack, back, forward, leave, count: history.length, index }

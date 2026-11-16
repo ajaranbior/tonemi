@@ -23,6 +23,7 @@ import type { PreviewVoice } from './AnswerPreview'
 import { SandhiNote, ToneAnswer } from './ToneAnswer'
 import { turnedGreen } from '../ear/game'
 import { useReview } from './useReview'
+import { inField } from './keys'
 import { useSamples } from './useSamples'
 import { FEEDBACK_SECONDS, playFeedback } from '../audio/sfx'
 
@@ -82,6 +83,7 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
   const [, setVoiceTick] = useState(0)
   const [autoReveal, setAutoReveal] = useState(() => getPref<boolean>('ear.auto', true))
   const review = useReview<Asked>()
+  const { record, leave } = review
   const playToken = useRef(0)
   const trial = useRef(0)
   const retry = useRef<Retry[]>([])
@@ -150,7 +152,7 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
       lastVoice.current.set(pick.id, pick.speaker)
       if (item && answered && recorded.current !== item) {
         recorded.current = item
-        review.record({ item: { ...item, sketch }, chosen, accepted, rec: lastRec.current ?? undefined })
+        record({ item: { ...item, sketch }, chosen, accepted, rec: lastRec.current ?? undefined })
       }
       const level = flags.melody ? melodyLevel(getEarCombos()[(target ?? pick.surface).join('')]) : 'full'
       const mine = ++nextToken.current
@@ -158,7 +160,7 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
       stopPlayback()
       void prepareItem(manifest, pick, target, level).then((ready) => {
         if (mine !== nextToken.current) return
-        review.leave()
+        leave()
         setAccepted(false)
         setComeback(false)
         setSketch(null)
@@ -170,7 +172,7 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
         setAnswered(false)
       })
     },
-    [manifest, item, chosen, answered, accepted, sketch, review.record, review.leave, flags.fresh, flags.retryOther, flags.retoned, flags.melody],
+    [manifest, item, chosen, answered, accepted, sketch, record, leave, flags.fresh, flags.retryOther, flags.retoned, flags.melody],
   )
 
   const started = useRef(false)
@@ -238,10 +240,14 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
       if (!manifest) return
       const mine = ++playToken.current
       const yours = await answerUrl(manifest, asked, answers)
-      if (mine !== playToken.current) return
+      if (mine !== playToken.current) {
+        if (yours) URL.revokeObjectURL(yours)
+        return
+      }
       if (!yours) return void listen(1, true)
       setPlaying(true)
       await playSequence([asked.url, yours, asked.url], () => mine === playToken.current, (i) => setAbStep(i < 0 ? null : i))
+      URL.revokeObjectURL(yours)
       if (mine === playToken.current) setPlaying(false)
     },
     [manifest, listen],
@@ -275,8 +281,11 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
     if (sound) playFeedback(g.all, game && back)
     const wait = sound ? FEEDBACK_SECONDS * 1000 : 0
     // A miss replays the word (or right → yours → right); a melody-only question plays the full word either way.
-    if (!g.all && flags.autoAB) setTimeout(() => void playAB(item, answers as Tone[]), wait)
-    else if (!g.all || item.melody) setTimeout(() => void listen(1, true), wait)
+    // Not if the learner has already moved on to the next word by then.
+    const asked = nextToken.current
+    const later = (replay: () => void) => setTimeout(() => asked === nextToken.current && replay(), wait)
+    if (!g.all && flags.autoAB) later(() => void playAB(item, answers as Tone[]))
+    else if (!g.all || item.melody) later(() => void listen(1, true))
   }, [item, answered, chosen, onAnswered, listen, playAB, sound, game, flags.retryOther, flags.autoAB])
 
   /** The learner disagrees with the answer key (or takes that back): flip this trial's result. */
@@ -329,7 +338,7 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
   // ← or Q goes back to the previous word, → or E forward / next.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey || !item) return
+      if (e.metaKey || e.ctrlKey || e.altKey || !item || inField(e)) return
       if (e.key === 'Enter') {
         e.preventDefault()
         if (shownAnswered) advance()
@@ -354,7 +363,7 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
       }
     }
     // A focused button would otherwise "click" on Space release.
-    const onUp = (e: KeyboardEvent) => e.key === ' ' && e.preventDefault()
+    const onUp = (e: KeyboardEvent) => e.key === ' ' && !inField(e) && e.preventDefault()
     window.addEventListener('keydown', onKey)
     window.addEventListener('keyup', onUp)
     return () => {

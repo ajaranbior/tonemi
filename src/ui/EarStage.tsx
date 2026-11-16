@@ -34,7 +34,9 @@ export function EarStage({ answered, chart, slots, duration, cursor, playing, on
   // In an effect, not the click handler, so it starts after the preview's unmount has stopped its audio.
   const prevTab = useRef(tab)
   const play = useRef(onPlay)
-  play.current = onPlay
+  useEffect(() => {
+    play.current = onPlay
+  })
   useEffect(() => {
     if (prevTab.current === 'yours' && tab === 'speaker') play.current()
     prevTab.current = tab

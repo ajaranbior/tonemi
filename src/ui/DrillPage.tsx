@@ -7,7 +7,7 @@ import { playUrl, stopPlayback, wavUrl } from '../audio/playback'
 import { startRecording, type Recording } from '../audio/recorder'
 import { audioUrl, loadManifest, refChao } from '../bank/load'
 import type { BankItem, ItemKind, Manifest } from '../bank/types'
-import { manyVoices, pickVoice, usableItems, voiceCount, voiceLabel } from '../bank/voices'
+import { manyVoices, pickVoice, setRecordingExcluded, usableItems, useVoiceVersion, voiceCount, voiceLabel } from '../bank/voices'
 import { getPref, getProgress, recordScore, setPref } from '../store'
 import { ComboPicker } from './ComboPicker'
 import { comboScores } from './progress'
@@ -57,7 +57,7 @@ export function DrillPage({ range, calibrated, onCalibrate }: Props) {
   const [hum, setHum] = useState(() => getPref<boolean>('drill.hum', false))
   const [progressTick, setProgressTick] = useState(0)
   /** Bumped when voice settings change, so the combo list follows the usable words. */
-  const [voiceTick, setVoiceTick] = useState(0)
+  const voiceTick = useVoiceVersion()
   const recording = useRef<Recording | null>(null)
 
   useEffect(() => {
@@ -194,7 +194,11 @@ export function DrillPage({ range, calibrated, onCalibrate }: Props) {
         <button onClick={() => setError(null)}>OK</button>
       </div>
     )
-  if (!manifest || !item || !refRange) return <div className="card">Loading word bank…</div>
+  if (!manifest) return <div className="card">Loading word bank…</div>
+  if (!item || !refRange) return <div className="card">
+    <p>No recordings available for this selection. Restore an excluded recording or change the voice settings.</p>
+    <VoiceSettings manifest={manifest} experiments />
+  </div>
 
   const refLine = refPlotLine(item, refRange)
   const refDuration = item.ref.st.length * item.ref.hop
@@ -272,7 +276,15 @@ export function DrillPage({ range, calibrated, onCalibrate }: Props) {
           )}
           <button onClick={() => pickItem(kind, combo, item)} disabled={phase === 'recording'}>Next →</button>
         </div>
-        {manyVoices(manifest) && <div className="muted small voice-tag">Voice: {voiceLabel(manifest, item.speaker)}</div>}
+        <div className="muted small voice-tag">
+          Voice: {voiceLabel(manifest, item.speaker)}{' · '}
+          <button className="link" disabled={phase !== 'idle'} onClick={() => {
+            stopPlayback()
+            setRecordingExcluded(item.id, item.speaker, true)
+            setAttempt(null)
+            setItem(voiceCount(manifest, item) ? pickVoice(manifest, item) : null)
+          }}>Don’t play this voice for this word again</button>
+        </div>
       </section>
 
       {attempt && <Feedback attempt={attempt} item={item} />}
@@ -284,7 +296,7 @@ export function DrillPage({ range, calibrated, onCalibrate }: Props) {
         <Toggle label="Smooth consonants only (m n l r w y)" value={smoothOnly} onChange={(v) => { setSmoothOnly(v); setPref('drill.smooth', v) }} />
         <Toggle label="Hum-back mode" value={hum} onChange={(v) => { setHum(v); setPref('drill.hum', v) }} />
         <LoopLength />
-        <VoiceSettings manifest={manifest} onChange={() => setVoiceTick((x) => x + 1)} />
+        <VoiceSettings manifest={manifest} experiments />
       </details>
     </div>
   )

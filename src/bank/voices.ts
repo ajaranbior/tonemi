@@ -1,17 +1,43 @@
+import { useSyncExternalStore } from 'react'
 import { getPref, setPref } from '../store'
-import type { BankItem, Manifest, Recording } from './types'
+import type { BankItem, ItemKind, Manifest, Recording } from './types'
 
-/** Master switch for synthetic voices. */
-const TTS_KEY = 'voices.tts'
+const kinds: ItemKind[] = ['single', 'pair', 'triple']
+// New category preferences deliberately start off, including for existing installations.
+const ttsKey = (kind: ItemKind) => `voices.tts.${kind}`
 const offKey = (speaker: string) => `voice.off.${speaker}`
+const excludedKey = (itemId: string, speaker: string) => `voice.excluded.${itemId}.${speaker}`
+const listeners = new Set<() => void>()
+let version = 0
+const changed = () => { version++; listeners.forEach((l) => l()) }
+const subscribe = (listener: () => void) => {
+  listeners.add(listener)
+  return () => { listeners.delete(listener) }
+}
+export const useVoiceVersion = () => useSyncExternalStore(subscribe, () => version)
 
-export const ttsEnabled = () => getPref<boolean>(TTS_KEY, true)
-export const setTtsEnabled = (on: boolean) => setPref(TTS_KEY, on)
+export const ttsEnabled = (kind?: ItemKind): boolean => kind ? getPref<boolean>(ttsKey(kind), false) : kinds.some((k) => ttsEnabled(k))
+export function setTtsKindEnabled(kind: ItemKind, on: boolean) {
+  setPref(ttsKey(kind), on)
+  changed()
+}
+export function setTtsEnabled(on: boolean) {
+  kinds.forEach((kind) => setPref(ttsKey(kind), on))
+  changed()
+}
 export const voiceOn = (speaker: string) => !getPref<boolean>(offKey(speaker), false)
-export const setVoiceOn = (speaker: string, on: boolean) => setPref(offKey(speaker), !on)
+export function setVoiceOn(speaker: string, on: boolean) {
+  setPref(offKey(speaker), !on)
+  changed()
+}
+export const recordingExcluded = (itemId: string, speaker: string) => getPref<boolean>(excludedKey(itemId, speaker), false)
+export function setRecordingExcluded(itemId: string, speaker: string, excluded: boolean) {
+  setPref(excludedKey(itemId, speaker), excluded)
+  changed()
+}
 
-export function voiceEnabled(manifest: Manifest, speaker: string): boolean {
-  if (manifest.speakers[speaker]?.tts && !ttsEnabled()) return false
+export function voiceEnabled(manifest: Manifest, speaker: string, kind?: ItemKind): boolean {
+  if (manifest.speakers[speaker]?.tts && !ttsEnabled(kind)) return false
   return voiceOn(speaker)
 }
 
@@ -23,15 +49,17 @@ export function recordings(item: BankItem): Recording[] {
 /** The item as spoken by `rec` (same id, so progress is shared across voices). */
 export const withRecording = (item: BankItem, rec: Recording): BankItem => ({ ...item, speaker: rec.speaker, audio: rec.audio, ref: rec.ref })
 
-const enabledRecordings = (manifest: Manifest, item: BankItem) => recordings(item).filter((r) => voiceEnabled(manifest, r.speaker))
+const allowedRecordings = (item: BankItem) => recordings(item).filter((r) => !recordingExcluded(item.id, r.speaker))
+const enabledRecordings = (manifest: Manifest, item: BankItem) => allowedRecordings(item).filter((r) => voiceEnabled(manifest, r.speaker, item.kind))
+const humanRecordings = (manifest: Manifest, item: BankItem) => allowedRecordings(item).filter((r) => !manifest.speakers[r.speaker]?.tts)
 
 /**
- * Items that have at least one enabled voice. When the settings leave nothing at all, everything is
- * used rather than showing an empty bank.
+ * Items with an enabled recording. If all voices are off, fall back to human recordings;
+ * explicit exclusions are always respected, even when that leaves an empty bank.
  */
 export function usableItems(manifest: Manifest): BankItem[] {
   const on = manifest.items.filter((i) => enabledRecordings(manifest, i).length > 0)
-  return on.length ? on : manifest.items
+  return on.length ? on : manifest.items.filter((i) => humanRecordings(manifest, i).length > 0)
 }
 
 const bases = new WeakMap<Manifest, Map<string, BankItem>>()
@@ -46,7 +74,8 @@ function base(manifest: Manifest, item: BankItem): BankItem {
 export function pickVoice(manifest: Manifest, word: BankItem, avoid?: string, rand: () => number = Math.random): BankItem {
   const item = base(manifest, word)
   let pool = enabledRecordings(manifest, item)
-  if (!pool.length) pool = recordings(item)
+  if (!pool.length) pool = humanRecordings(manifest, item)
+  if (!pool.length) throw new Error(`No enabled recordings for ${item.id}`)
   if (avoid && pool.length > 1) pool = pool.filter((r) => r.speaker !== avoid)
   return withRecording(item, pool[Math.floor(rand() * pool.length)])
 }

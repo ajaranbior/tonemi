@@ -7,7 +7,7 @@ import { FRAME_CENTER, retone, targetContour, type Voice } from '../audio/retone
 import { synthTones } from '../audio/synth'
 import { audioUrl, loadManifest, refChao } from '../bank/load'
 import type { BankItem, Manifest } from '../bank/types'
-import { pickVoice, usableItems } from '../bank/voices'
+import { pickVoice, usableItems, useVoiceVersion } from '../bank/voices'
 import { PitchPlot, type PlotLabel, type PlotLine } from './PitchPlot'
 import { useSamples } from './useSamples'
 import { marked } from './tone'
@@ -146,6 +146,7 @@ function SameVoice({ chosen, syllables, voice, switcher }: { chosen: Tone[]; syl
 
 /** A real recording of another word with the chosen tones, else a synthesized hum. */
 function OtherWord({ chosen, exclude, syllables, switcher }: { chosen: Tone[]; exclude?: string; syllables?: string[]; switcher: ReactNode }) {
+  const voiceVersion = useVoiceVersion()
   const [manifest, setManifest] = useState<Manifest | null>(null)
   const [round, setRound] = useState(0)
   const [cursor, setCursor] = useState<number | undefined>()
@@ -158,6 +159,7 @@ function OtherWord({ chosen, exclude, syllables, switcher }: { chosen: Tone[]; e
 
   // Recordings with the chosen tones, those sharing the most syllables with the asked word first.
   const matches = useMemo(() => {
+    void voiceVersion // Recompute candidates when the external voice preferences change.
     const asked = syllables?.map(plain) ?? []
     const shared = (i: BankItem) => i.syllables.filter((s, k) => plain(s) === asked[k]).length
     return (manifest ? usableItems(manifest) : [])
@@ -165,7 +167,7 @@ function OtherWord({ chosen, exclude, syllables, switcher }: { chosen: Tone[]; e
       .map((i) => ({ i, score: shared(i), r: Math.random() }))
       .sort((a, b) => b.score - a.score || a.r - b.r)
       .map((x) => x.i)
-  }, [manifest, chosen, exclude, syllables])
+  }, [manifest, chosen, exclude, syllables, voiceVersion])
   // Two 3rd tones in a row are never pronounced as 3-3 (the first becomes a 2nd tone), so there is no
   // recording of that surface pattern. Offer a word that is *written* with these tones instead.
   const written = useMemo(
@@ -175,7 +177,7 @@ function OtherWord({ chosen, exclude, syllables, switcher }: { chosen: Tone[]; e
   const pool = matches.length ? matches : written
   const word = pool.length ? pool[round % pool.length] : null
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const item: BankItem | null = useMemo(() => (word && manifest ? pickVoice(manifest, word) : null), [word, manifest, round])
+  const item: BankItem | null = useMemo(() => (word && manifest ? pickVoice(manifest, word) : null), [word, manifest, round, voiceVersion])
   const isWritten = !matches.length && !!item
   const sharedCount = item && syllables ? item.syllables.filter((s, k) => plain(s) === plain(syllables[k] ?? '')).length : 0
   const range = manifest ? Object.values(manifest.speakers)[0].range : null

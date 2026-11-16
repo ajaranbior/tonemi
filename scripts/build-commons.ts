@@ -58,7 +58,7 @@ interface SpeakerMeta {
 const metaFile = join(clips, 'meta.json')
 
 const curl = (url: string, ...args: string[]) =>
-  execFileSync('curl', ['-sS', '--fail', '--retry', '3', '--retry-delay', '2', '-A', UA, ...args, url], { maxBuffer: 1 << 28 })
+  execFileSync('curl', ['-sS', '--fail', '--connect-timeout', '10', '--max-time', '30', '--retry', '2', '--retry-delay', '2', '-A', UA, ...args, url], { maxBuffer: 1 << 28 })
 
 async function fetchClips(): Promise<Record<string, SpeakerMeta>> {
   const byHanzi = new Map<string, string[]>()
@@ -72,7 +72,8 @@ async function fetchClips(): Promise<Record<string, SpeakerMeta>> {
     try {
       const q = new URLSearchParams({
         action: 'query', format: 'json', generator: 'search', gsrnamespace: '6', gsrlimit: '50',
-        gsrsearch: `intitle:"LL-Q" intitle:"${hanzi}"`, prop: 'imageinfo', iiprop: 'url|extmetadata', iiextmetadatafilter: 'LicenseShortName',
+        // Commons search tokenizes "LL-Q" poorly; LL matches the prefix, then the parser vets it.
+        gsrsearch: `intitle:LL intitle:"${hanzi}"`, prop: 'imageinfo', iiprop: 'url|extmetadata', iiextmetadatafilter: 'LicenseShortName',
       })
       json = JSON.parse(curl(`${API}?${q}`).toString())
     } catch (e) {

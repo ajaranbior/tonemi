@@ -21,7 +21,10 @@ A personal Mandarin tone **production and recognition** trainer. Runs entirely i
   with those tones. Optional streaks and points (Ear
   settings): a daily-practice streak that counts any answer, a right-in-a-row combo, and a bonus
   for getting a previously missed word right. Words are played in a random voice (the native
-  speaker or one of six optional neural TTS voices); a missed word comes back in another voice.
+  speakers by default); a missed word comes back in another available voice. Five optional neural TTS
+  voices can be enabled separately for single syllables, pairs and triples in Experiments. Beside the
+  current voice, “Don’t play this voice for this word again” excludes just that word/voice recording.
+  Exclusions persist in this browser and can be restored in Drill/Ear settings.
   *Video mode*: load audio/video plus `.srt`/`.vtt`, the lines are split into words
   (`Intl.Segmenter`), clip boundaries are estimated from the pitch/energy of the audio,
   and you train on 1–3 words or a whole phrase at a time.
@@ -52,11 +55,26 @@ See [docs/DESIGN.md](docs/DESIGN.md) for the concept and roadmap.
 
 ## More real voices
 
+The bank includes Yue Tan for all 504 words and Chen Wang for 53 of the 64 single-syllable items.
+Human recordings are enabled by default; synthetic voices start off, including on existing installations.
+To rebuild Chen Wang's additions from an [audio-cmn](https://github.com/hugolpz/audio-cmn) clone (needs `ffmpeg`):
+
+```bash
+git -C /path/to/audio-cmn checkout HEAD -- 64k/syllabs
+npm run build-syllables -- /path/to/audio-cmn
+```
+
+The importer matches toned pinyin, checks segmentation and pitch, and copies accepted original MP3s
+unchanged. It preserves word IDs, progress, other voices and recording exclusions. Attribution is shown
+in About and source links are kept per recording. Automated pitch checks are a filter, not a listening review.
+
 `npm run build-commons` adds native speakers from [Lingua Libre](https://lingualibre.org) (Wikimedia Commons,
 CC BY-SA) to the word bank as extra voices: it searches Commons for each bank word, downloads the recordings,
 keeps only clips whose pitch matches the expected tones (same check as the other voices), and credits each
 speaker in the app. `LIST=1` shows the speakers found; `SPEAKERS=` / `EXCLUDE=` pick whose voices to use.
 Needs `ffmpeg` and `curl`, and network access to commons.wikimedia.org.
+
+Tone Perfect access/redistribution is still pending; see [audio source notes](docs/AUDIO-SOURCES.md).
 
 ## Run
 
@@ -100,11 +118,14 @@ npm run build-bank -- /tmp/audio-cmn
 Adding `FILL=1` before `npm run build-bank` instead *adds* recordings for tone patterns that have fewer than 4 items,
 keeping every existing item and id (so saved progress stays valid).
 
-**Extra voices.** `npm run build-voices` (needs `pip install edge-tts` and `ffmpeg`) has six Microsoft Edge neural
+**Extra voices.** `npm run build-voices` (needs `pip install edge-tts` and `ffmpeg`) has five Microsoft Edge neural
 voices say every bank word, keeps only clips that pass the same pitch check, and stores them as extra recordings
 (`alts`) of the existing words, so ids and progress don't change. About half the clips pass, so 402 of the 504
-words have at least one extra voice. Each word is played by a random enabled voice; Drill and Ear settings
-can switch synthetic voices off, all together or one by one.
+words have at least one synthetic voice. Each word is played by a random enabled voice. Experiments
+(in Ear, or inside Drill settings) enables synthetic voices by syllable count and lets you switch individual
+synthetic speakers off. These choices are shared by Drills and Ear and apply to the next question.
+Excluding a recording only affects that word and speaker, across both modes; switching categories or
+speakers off and back on never clears exclusions. Clearing browser site data does clear these preferences.
 
 The script picks common HSK words per tone combination (mixing sonorant-only
 words like 妈妈/名人 with words containing stops and fricatives), runs every clip

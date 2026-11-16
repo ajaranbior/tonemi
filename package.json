@@ -12,7 +12,8 @@
     "build-bank": "tsx scripts/build-bank.ts",
     "dev:https": "HTTPS=1 vite --host",
     "build-voices": "tsx scripts/build-voices.ts",
-    "build-commons": "tsx scripts/build-commons.ts"
+    "build-commons": "tsx scripts/build-commons.ts",
+    "build-syllables": "tsx scripts/build-syllables.ts"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.3.2",

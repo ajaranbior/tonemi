@@ -163,6 +163,7 @@ button.link { min-height: 0; padding: 0; border: 0; background: none; color: var
 .voice-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); padding-left: 30px; }
 .toggle.voice { min-height: 34px; }
 .voice-tag { font-size: 0.8em; }
+.excluded-recording { display: flex; justify-content: space-between; gap: 12px; margin: 8px 0; }
 
 .prompt { padding-left: 20px; }
 .prompt li { margin: 6px 0; }

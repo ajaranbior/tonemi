@@ -1,4 +1,5 @@
 import { FLAGS, setFlag, useFlag, type Flag } from '../flags'
+import { SyntheticVoiceSettings } from './VoiceSettings'
 
 function FlagToggle({ flag }: { flag: Flag }) {
   const on = useFlag(flag)
@@ -26,6 +27,7 @@ export function Experiments() {
       {(Object.keys(FLAGS) as Flag[]).map((f) => (
         <FlagToggle key={f} flag={f} />
       ))}
+      <SyntheticVoiceSettings />
     </details>
   )
 }

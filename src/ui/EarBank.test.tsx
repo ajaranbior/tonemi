@@ -12,7 +12,7 @@ const { base, manifest } = vi.hoisted(() => {
   return { base, manifest: { items: [base], speakers: { test: { range: { lo: 10, hi: 30 } } } } }
 })
 vi.mock('../bank/load', () => ({ loadManifest: async () => manifest, audioUrl: () => 'audio/word.mp3', refChao: () => new Float32Array(2) }))
-vi.mock('../bank/voices', () => ({ usableItems: () => [base], pickVoice: () => base, voiceCount: () => 2, manyVoices: () => true, voiceLabel: () => 'test' }))
+vi.mock('../bank/voices', () => ({ usableItems: () => [base], pickVoice: () => base, voiceCount: () => 2, manyVoices: () => true, voiceLabel: () => 'test', useVoiceVersion: () => 0, recordingExcluded: () => false, setRecordingExcluded: vi.fn() }))
 vi.mock('./earItem', async (original) => ({ ...await original<typeof import('./earItem')>(), prepareItem: vi.fn() }))
 vi.mock('../flags', () => ({ useFlag: () => false }))
 vi.mock('./useSamples', () => ({ useSamples: () => null }))

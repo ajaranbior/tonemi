@@ -5,7 +5,7 @@ import { playSequence, playUrl, stopPlayback } from '../audio/playback'
 import { jitterRate, canRetone } from '../audio/variants'
 import { audioUrl, loadManifest, refChao } from '../bank/load'
 import type { BankItem, ItemKind, Manifest } from '../bank/types'
-import { manyVoices, pickVoice, usableItems, voiceCount, voiceLabel } from '../bank/voices'
+import { manyVoices, pickVoice, recordingExcluded, setRecordingExcluded, usableItems, useVoiceVersion, voiceCount, voiceLabel } from '../bank/voices'
 import { duePattern, dueRetry, freshWeight, grade, melodyLevel, pickByCombo, pickWeighted } from '../ear/adapt'
 import { useFlag } from '../flags'
 import { getEarCombos, getEarSeen, getPref, setPref } from '../store'
@@ -74,7 +74,7 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
   }
   const [playing, setPlaying] = useState(false)
   const [cursor, setCursor] = useState<number | undefined>()
-  const [, setVoiceTick] = useState(0)
+  const voiceVersion = useVoiceVersion()
   const session = useEarTrial(item, source, { onAnswered, onOverride, game }, flags.retryOther)
   const { chosen, accepted, comeback, sound, setSound, autoReveal, setAutoReveal,
     trial, retry, review, archive, reset, submit, afterFeedback, cancelFeedback,
@@ -151,7 +151,15 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
           }
         }
       }
-      if (!pick) return
+      if (!pick) {
+        ++nextToken.current
+        ++playToken.current
+        cancelFeedback()
+        stopPlayback()
+        setPlaying(false)
+        setItem(null)
+        return
+      }
       pick = pickVoice(manifest, pick, lastVoice.current.get(pick.id))
       lastVoice.current.set(pick.id, pick.speaker)
       const level = flags.melody ? melodyLevel(getEarCombos()[(target ?? pick.surface).join('')]) : 'full'
@@ -177,18 +185,16 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
     [manifest, onlySnippets, item, sketch, archive, reset, cancelFeedback, audioPool, trial, retry, flags.fresh, flags.retryOther, flags.retoned, flags.melody],
   )
 
-  const started = useRef(false)
   useEffect(() => {
-    if (manifest && !item && !started.current) {
-      started.current = true
-      next(kind, null, false)
-    }
-  }, [manifest, item, kind, next])
+    let active = true
+    if (manifest && !item) queueMicrotask(() => { if (active) next(kind, null, false) })
+    return () => { active = false }
+  }, [manifest, item, kind, next, voiceVersion])
 
   /** Play what is asked: the hum / muffled version before answering, the full word after. */
   const listen = useCallback(
     async (rate = 1, full = shownAnswered) => {
-      if (!shown) return
+      if (!shown || recordingExcluded(realItem(shown).id, shown.speaker)) return
       const mine = ++playToken.current
       setAbStep(null)
       setPlaying(true)
@@ -239,7 +245,7 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
   /** After a miss: the right tones, then the same recording moved to the answer, then the right ones again. */
   const playAB = useCallback(
     async (asked: EarItem, answers: Tone[]) => {
-      if (!manifest) return
+      if (!manifest || recordingExcluded(realItem(asked).id, asked.speaker)) return
       const mine = ++playToken.current
       const yours = await answerUrl(manifest, asked, answers)
       if (mine !== playToken.current) {
@@ -275,10 +281,12 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
   // The asked recording, for "your answer in the same voice".
   // A retoned question previews from the real recording, with the real tones as the starting point.
   const voice = useMemo<PreviewVoice | undefined>(() => {
+    void voiceVersion // Exclusions can change while a past answer is being reviewed.
     if (!shown || !refRange) return undefined
     const real = realItem(shown)
+    if (recordingExcluded(real.id, shown.speaker)) return undefined
     return { url: real === shown ? shown.url : audioUrl(real), hop: real.ref.hop, t0: real.ref.t0, st: real.ref.st, segments: real.ref.segments, range: refRange, expected: real.surface }
-  }, [shown, refRange])
+  }, [shown, refRange, voiceVersion])
   const shownSketch = rv ? (rv.item.sketch ?? null) : sketch
   const sketchPlot = useMemo(() => sketchLine(shownSketch), [shownSketch])
   const g = useMemo(() => (shown && shownAnswered ? grade(shown.surface, shownChosen) : null), [shown, shownAnswered, shownChosen])
@@ -290,14 +298,19 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
         <button onClick={() => setError(null)}>OK</button>
       </div>
     )
-  if (!manifest || !shown || !refRange) return <div className="card">Loading word bank…</div>
+  if (!manifest) return <div className="card">Loading word bank…</div>
+  if (!shown || !refRange) return <div className="card">
+    <p>No recordings available for this selection. Restore an excluded recording or change the voice settings.</p>
+    <button onClick={() => { setKind('mix'); next('mix', null, false) }}>Try all syllable counts</button>
+    <VoiceSettings manifest={manifest} />
+  </div>
 
   const pinyin = marked(shown.syllables, shown.surface)
   const ok = rv ? !!rv.accepted : accepted
 
   return (
     <>
-      <BankScope manifest={manifest} onlySnippets={onlySnippets} onChange={(on) => { setOnlySnippets(on); setKind('mix'); started.current = false; setItem(null) }} />
+      <BankScope manifest={manifest} onlySnippets={onlySnippets} onChange={(on) => { setOnlySnippets(on); setKind('mix'); setItem(null) }} />
       <section className={`card ${g ? (g.all || ok ? 'flash-ok' : 'flash-bad') : ''}`}>
         <div className="item-head ear-head">
           <div>
@@ -341,13 +354,25 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
         />
 
         <div className="controls ear-controls">
-          <button className="primary" onClick={() => listen(1)} disabled={playing}>▶ Listen</button>
-          <button onClick={() => listen(0.6)} disabled={playing}>🐢 Slow</button>
+          <button className="primary" onClick={() => listen(1)} disabled={playing || recordingExcluded(realItem(shown).id, shown.speaker)}>▶ Listen</button>
+          <button onClick={() => listen(0.6)} disabled={playing || recordingExcluded(realItem(shown).id, shown.speaker)}>🐢 Slow</button>
           {manyVoices(manifest) && (
             <button onClick={otherVoice} disabled={playing || !!rv || voiceCount(manifest, shown) < 2} title="Same word, another voice">🔀 Voice</button>
           )}
         </div>
-        {manyVoices(manifest) && <div className="muted small voice-tag">Voice: {voiceLabel(manifest, shown.speaker)}</div>}
+        <div className="muted small voice-tag">
+          Voice: {voiceLabel(manifest, shown.speaker)}{' · '}
+          <button className="link" disabled={playing || recordingExcluded(realItem(shown).id, shown.speaker)} onClick={() => {
+            cancelFeedback()
+            ++playToken.current
+            stopPlayback()
+            setRecordingExcluded(realItem(shown).id, shown.speaker, true)
+            if (!rv && item) {
+              if (voiceCount(manifest, realItem(item))) otherVoice()
+              else next(kind, item, false)
+            }
+          }}>{recordingExcluded(realItem(shown).id, shown.speaker) ? 'Recording excluded' : 'Don’t play this voice for this word again'}</button>
+        </div>
         {!shownAnswered && shown.melody && (
           <div className="muted small voice-tag">{shown.melody === 'hum' ? '🎵 Melody only: a hum of the speaker’s pitch' : '🔉 Muffled: listen for the melody'}</div>
         )}
@@ -404,7 +429,7 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
         <Toggle label="Reveal the answer as soon as all tones are chosen" value={autoReveal} onChange={setAutoReveal} />
         <Toggle label="Show the character before answering" value={showHanzi} onChange={(v) => { setShowHanzi(v); setPref('ear.hanzi', v) }} />
         <LoopLength />
-        <VoiceSettings manifest={manifest} onChange={() => setVoiceTick((x) => x + 1)} />
+        <VoiceSettings manifest={manifest} />
       </details>
     </>
   )

@@ -16,6 +16,9 @@ import { Toggle } from './Toggle'
 import { LoopLength } from './LoopLength'
 import { VoiceSettings } from './VoiceSettings'
 import { PitchPlot, type PlotLabel, type PlotLine } from './PitchPlot'
+import { isSnippet } from '../snippets/store'
+import { useRoute } from '../route'
+import { BankScope } from './BankScope'
 import { useSamples } from './useSamples'
 import { marked, scoreClass, toneName } from './tone'
 
@@ -37,6 +40,8 @@ interface Props {
 }
 
 export function DrillPage({ range, calibrated, onCalibrate }: Props) {
+  const requestedId = useRoute()[1]
+  const [onlySnippets, setOnlySnippets] = useState(false)
   const [manifest, setManifest] = useState<Manifest | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [kind, setKind] = useState<ItemKind>(() => getPref('drill.kind', 'pair') as ItemKind)
@@ -56,8 +61,12 @@ export function DrillPage({ range, calibrated, onCalibrate }: Props) {
   const recording = useRef<Recording | null>(null)
 
   useEffect(() => {
-    loadManifest().then(setManifest, (e) => setError(String(e)))
-  }, [])
+    loadManifest().then((m) => {
+      setManifest(m)
+      const selected = m.items.find((i) => i.id === requestedId)
+      if (selected) { setItem(selected); setKind(selected.kind); setCombo(selected.combo); setOnlySnippets(isSnippet(selected)) }
+    }, (e) => setError(String(e)))
+  }, [requestedId])
 
   // Leaving the page stops the audio and the microphone, and nothing starts afterwards.
   const alive = useRef(true)
@@ -74,7 +83,7 @@ export function DrillPage({ range, calibrated, onCalibrate }: Props) {
 
   const refRange = manifest && item ? manifest.speakers[item.speaker].range : null
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const items = useMemo(() => (manifest ? usableItems(manifest) : []), [manifest, voiceTick])
+  const items = useMemo(() => (manifest ? usableItems(onlySnippets ? { ...manifest, items: manifest.items.filter(isSnippet) } : manifest) : []), [manifest, voiceTick, onlySnippets])
   const scores = useMemo(
     () => (manifest ? comboScores(manifest.items, getProgress()) : new Map()),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -85,6 +94,7 @@ export function DrillPage({ range, calibrated, onCalibrate }: Props) {
     (k: ItemKind, c: string, avoid?: BankItem | null) => {
       if (!manifest) return
       let pool = items.filter((i) => i.kind === k)
+      if (!pool.length && items.length) { pool = items.filter((i) => i.kind === items[0].kind); setKind(items[0].kind) }
       let target = c
       if (c === 'auto' || !pool.some((i) => i.combo === c)) target = pickWeakCombo(pool, scores)
       pool = pool.filter((i) => i.combo === target)
@@ -216,6 +226,7 @@ export function DrillPage({ range, calibrated, onCalibrate }: Props) {
         </div>
       )}
 
+      <BankScope manifest={manifest} onlySnippets={onlySnippets} onChange={(on) => { setOnlySnippets(on); setItem(null); setCombo('auto'); setAttempt(null) }} />
       <ComboPicker items={items} kind={kind} combo={combo} scores={scores} onChange={choose} />
 
       <section className="card item-card">
@@ -242,7 +253,7 @@ export function DrillPage({ range, calibrated, onCalibrate }: Props) {
 
         {plot}
         <div className="legend">
-          <span className="key ref" /> {manifest.speakers[item.speaker]?.tts ? 'TTS voice' : 'native'} <span className="key user" /> you
+          <span className="key ref" /> {manifest.speakers[item.speaker]?.tts ? 'TTS voice' : isSnippet(item) ? 'snippet' : 'native'} <span className="key user" /> you
           {hum && <span className="muted"> · hum the melody, no words</span>}
         </div>
 

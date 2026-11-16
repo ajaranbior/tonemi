@@ -132,3 +132,35 @@ Omit the number to check the entire bank, including alternate voices.
 Creaky voice — common at the bottom of T3 and T4 — has no measurable pitch, so
 loud unpitched frames right after voicing are treated as creak and drawn as a
 ramp down to Chao 1 rather than as silence.
+
+## Capture your own tone exercises
+
+Open **Snippets** to turn a short Mandarin recording into exercises:
+
+1. Record with the microphone, import a browser-playable audio/video file (including a phone
+   screen recording), or choose **Anki**, connect to Anki desktop, pick a deck/search and import
+   one of its audio tracks. Clips can be up to 30 seconds. The Anki picker lists every
+   `[sound:…]` attachment, including multiple tracks per card, with optional audio/transcript
+   field selection. It reads at most 500 matching notes; narrow the search for larger decks.
+2. Quiet edges are trimmed and long silent pauses shortened. A multilingual Whisper tiny model
+   transcribes Mandarin in a Web Worker on your device. First use downloads model files from
+   Hugging Face (and caches them where the browser supports it); audio is not uploaded. Anki
+   imports use the card's Chinese text when available. Check it against the selected recording,
+   or use **Recognize again from audio**. You can always enter/correct the transcript manually.
+3. Tap the first and last Chinese character of a span of 1–3 syllables. Preview the cut, adjust
+   its start/end, and check the pinyin and spoken tones. Timing is estimated from sentence
+   timestamps and pitch/energy, not forced alignment. Tone sandhi is kept from the full sentence;
+   correct polyphones or spoken-tone labels before saving when needed.
+4. **Save to tone exercises** adds a standalone WAV clip and pitch reference to your bank.
+   **Practice** opens it in Drills; **My snippets** in Drills or Ear → Words limits practice to
+   saved clips. Save several spans from the same sentence without recording it again.
+
+Clips are stored in IndexedDB on the current browser/device, survive reloads, and can be deleted
+from the snippet bank. They do not sync across devices; clearing site data deletes them.
+Automatic trimming removes quiet sections, not background music or overlapping speakers.
+Recognition quality and speed depend on the recording and device; text and timings remain editable.
+
+Mobile browsers cannot reliably capture another app's internal audio directly. Use your phone's
+screen recorder with device audio enabled and import the resulting file (capture may be restricted
+by the source app). AnkiConnect import needs Anki desktop and its add-on on the same computer;
+importing from Anki mobile directly is not supported.

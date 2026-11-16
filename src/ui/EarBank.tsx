@@ -21,6 +21,8 @@ import { extendSketch, sketchLine, type Sketch } from './sketch'
 import type { PreviewVoice } from './AnswerPreview'
 import { SandhiNote, ToneAnswer } from './ToneAnswer'
 import { useEarTrial, useEarControls, type TrialSource } from './useEarTrial'
+import { isSnippet } from '../snippets/store'
+import { BankScope } from './BankScope'
 import { useSamples } from './useSamples'
 
 type Kind = ItemKind | 'mix'
@@ -52,6 +54,7 @@ export interface EarProps {
 }
 
 export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
+  const [onlySnippets, setOnlySnippets] = useState(false)
   const [manifest, setManifest] = useState<Manifest | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [kind, setKind] = useState<Kind>(() => getPref('ear.kind', 'pair') as Kind)
@@ -101,7 +104,7 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
   const next = useCallback(
     (k: Kind, avoid?: Asked | null, play = true) => {
       if (!manifest) return
-      const usable = usableItems(manifest)
+      const usable = usableItems(onlySnippets ? { ...manifest, items: manifest.items.filter(isSnippet) } : manifest)
       const byId = new Map(usable.map((i) => [i.id, i]))
       const inKind = (i: BankItem) => k === 'mix' || i.kind === k
       const avoidId = avoid ? realItem(avoid).id : undefined
@@ -133,6 +136,7 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
       if (!pick) {
         const kindNow = k === 'mix' ? BASIC[Math.floor(Math.random() * BASIC.length)] : k
         let pool = usable.filter((i) => i.kind === kindNow)
+        if (!pool.length && k === 'mix') pool = usable
         if (pool.length > 1 && avoidId) pool = pool.filter((i) => i.id !== avoidId)
         pick = pickByCombo(pool, comboKey, getEarCombos(), Math.random, weight)
         // Retoned questions: keep the pattern chosen above, but say it with another word moved to it.
@@ -170,7 +174,7 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
         setItem(ready)
       })
     },
-    [manifest, item, sketch, archive, reset, cancelFeedback, audioPool, trial, retry, flags.fresh, flags.retryOther, flags.retoned, flags.melody],
+    [manifest, onlySnippets, item, sketch, archive, reset, cancelFeedback, audioPool, trial, retry, flags.fresh, flags.retryOther, flags.retoned, flags.melody],
   )
 
   const started = useRef(false)
@@ -293,6 +297,7 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
 
   return (
     <>
+      <BankScope manifest={manifest} onlySnippets={onlySnippets} onChange={(on) => { setOnlySnippets(on); setKind('mix'); started.current = false; setItem(null) }} />
       <section className={`card ${g ? (g.all || ok ? 'flash-ok' : 'flash-bad') : ''}`}>
         <div className="item-head ear-head">
           <div>
@@ -386,7 +391,7 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
         <p className="muted small">Word length</p>
         <div className="segmented compact" role="tablist" aria-label="Word length">
           {KINDS.map(([k, label]) => (
-            <button key={k} role="tab" aria-selected={kind === k} className={kind === k ? 'active' : ''} onClick={() => choose(k)}>
+            <button key={k} disabled={onlySnippets && k !== 'mix' && !manifest.items.some((i) => isSnippet(i) && i.kind === k)} role="tab" aria-selected={kind === k} className={kind === k ? 'active' : ''} onClick={() => choose(k)}>
               {label}
             </button>
           ))}

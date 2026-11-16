@@ -8,13 +8,15 @@ import { DrillPage } from './ui/DrillPage'
 import { EarPage } from './ui/EarPage'
 
 // Shadowing pulls in the pinyin dictionary; load it only when opened.
+const SnippetsPage = lazy(() => import('./ui/SnippetsPage'))
 const ShadowPage = lazy(() => import('./ui/ShadowPage'))
 
-type Tab = 'drill' | 'ear' | 'shadow' | 'calibrate' | 'about'
+type Tab = 'drill' | 'ear' | 'snippets' | 'shadow' | 'calibrate' | 'about'
 
 const TABS: [Tab, string, string][] = [
   ['drill', '🎯', 'Drills'],
   ['ear', '👂', 'Ear'],
+  ['snippets', '✂️', 'Snippets'],
   ['shadow', '🎬', 'Shadow'],
   ['calibrate', '🎚️', 'Range'],
   ['about', 'ℹ️', 'About'],
@@ -44,6 +46,7 @@ export default function App() {
       <main>
         {tab === 'drill' && <DrillPage range={range} calibrated={calibrated} onCalibrate={() => setTab('calibrate')} />}
         {tab === 'ear' && <EarPage />}
+        {tab === 'snippets' && <Suspense fallback={<div className="card">Loading…</div>}><SnippetsPage /></Suspense>}
         {tab === 'shadow' && (
           <Suspense fallback={<div className="card">Loading…</div>}>
             <ShadowPage range={range} />

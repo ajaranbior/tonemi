@@ -361,3 +361,20 @@ select.text-input { appearance: auto; }
 .pair-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 8px 0; }
 .pair-card { min-height: 120px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 8px; }
 .pair-card.on { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Capture, select and save personal tone exercises. */
+.snippet-transcript { font: inherit; font-size: 1.15rem; resize: vertical; }
+.snippet-characters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 14px 0; }
+.snippet-characters button { font-size: 1.7rem; min-width: 46px; padding: 8px; }
+.snippet-characters button.active { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.snippet-selection { border-top: 1px solid var(--border); padding-top: 10px; margin-top: 16px; }
+.snippet-fields { display: flex; flex-wrap: wrap; gap: 12px; margin: 12px 0; }
+.snippet-fields > label { flex: 1; min-width: 85px; }
+.snippet-fields input[type=range] { display: block; width: 100%; accent-color: var(--accent); }
+.snippet-saved { display: flex; gap: 12px; align-items: center; justify-content: space-between; border-top: 1px solid var(--border); padding: 14px 0; overflow-wrap: anywhere; }
+.snippet-saved > div:first-child { min-width: 0; }
+.snippet-saved strong { font-size: 1.15rem; }
+.snippet-actions { display: flex; flex-wrap: wrap; gap: 6px; flex-shrink: 0; }
+.snippet-track-list { max-height: 380px; overflow-y: auto; margin-top: 12px; }
+.snippet-track-list button { flex-shrink: 0; }
+.card audio { display: block; width: 100%; margin: 12px 0; }

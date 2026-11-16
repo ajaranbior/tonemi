@@ -21,9 +21,11 @@ export function EarPage() {
   const route = useRoute()
   // #/ear/words, #/ear/video or #/ear/anki; a bare #/ear restores the last used mode.
   const mode: Mode = MODES.includes(route[1] as Mode) ? (route[1] as Mode) : (getPref('ear.mode', 'words') as Mode)
-  // Make the mode explicit in the URL so history entries (Back) are unambiguous.
+  // Make the mode explicit in the URL so history entries (Back) are unambiguous. Only while the URL
+  // is still on this tab: when the learner leaves, this page can render once more with the new
+  // route before it unmounts, and rewriting the URL then would pull them straight back here.
   useEffect(() => {
-    if (route[1] !== mode) history.replaceState(null, '', `#/ear/${mode}`)
+    if (route[0] === 'ear' && route[1] !== mode) history.replaceState(null, '', `#/ear/${mode}`)
   }, [route, mode])
   const [session, setSession] = useState({ n: 0, ok: 0 })
   const [tick, setTick] = useState(0)

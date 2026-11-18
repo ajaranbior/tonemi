@@ -94,10 +94,10 @@ function Placeholder({ slots, duration, cursor, playing, onPlay, sketch, focus, 
         </div>
       ) : focus ? (
         <div className="legend">
-          <span className="key focus" /> listen for this syllable{hint ? <> · <span className="key given" /> the shown tones</> : ' · the speaker\'s pitch is drawn after you answer'}
+          <span className="key focus" /> listen for this syllable{hint ? <> · <span className="key given" /> the other syllables</> : ' · the speaker\'s pitch is drawn after you answer'}
         </div>
       ) : hint ? (
-        <div className="legend"><span className="key given" /> the shown tones · the rest is drawn after you answer</div>
+        <div className="legend"><span className="key given" /> the other syllables · the rest is drawn after you answer</div>
       ) : (
         <div className="legend">The speaker's pitch is drawn here after you answer.</div>
       )}

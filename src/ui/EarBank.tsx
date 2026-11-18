@@ -538,7 +538,7 @@ export function ReferenceChart({ item, range, chosen, pinyin, cursor, sketch, fo
         <span className="key ref" /> the speaker's pitch
         {given?.some(Boolean) && (
           <>
-            <span className="key given" /> shown tones
+            <span className="key given" /> other syllables
           </>
         )}
         {guess && (

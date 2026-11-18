@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Tone } from '../analysis/tones'
 import { playSequence, playUrl, stopPlayback } from '../audio/playback'
 import { jitterRate } from '../audio/variants'
-import { loadManifest } from '../bank/load'
+import { loadManifest, refChao } from '../bank/load'
 import type { BankItem, ItemKind, Manifest } from '../bank/types'
 import { pickVoice, usableItems } from '../bank/voices'
 import { freshWeight, pickWeighted, topPair } from '../ear/adapt'
@@ -12,6 +12,7 @@ import { FEEDBACK_SECONDS, playFeedback } from '../audio/sfx'
 import { ReferenceChart, type EarProps } from './EarBank'
 import { answerUrl, prepareItem, type EarItem } from './earItem'
 import { EarStage, ResultChip } from './EarStage'
+import { splitGiven } from './earPlot'
 import { inField } from './keys'
 import { marked } from './tone'
 import { ToneGlyph } from './ToneGlyph'
@@ -250,6 +251,11 @@ export function EarContrast({ onAnswered }: Pick<EarProps, 'onAnswered'>) {
           others: segments.flatMap((s, k) => (k === at ? [] : [[s[0] * hop, s[1] * hop] as [number, number]])),
         }
       : undefined
+  // The other syllables are not asked: draw their pitch (greyed) before answering, and keep it greyed after.
+  const given = focus ? item.surface.map((_, k) => k !== at) : undefined
+  const hint = given && !answered
+    ? { lines: [splitGiven(refChao(item, range), hop, segments, given).given], boundaries: segments.slice(1).map((sg) => sg[0] * hop) }
+    : undefined
 
   return (
     <>
@@ -274,8 +280,9 @@ export function EarContrast({ onAnswered }: Pick<EarProps, 'onAnswered'>) {
         <EarStage
           key={item.id + item.speaker + String(view)}
           answered={answered}
-          chart={answered && <ReferenceChart item={item} range={range} chosen={chosen} pinyin={pinyin} cursor={cursor} focus={focus?.span} />}
+          chart={answered && <ReferenceChart item={item} range={range} chosen={chosen} pinyin={pinyin} cursor={cursor} focus={focus?.span} given={given} />}
           focus={focus}
+          hint={hint}
           slots={item.syllables.length}
           duration={item.ref.st.length * item.ref.hop}
           cursor={cursor}

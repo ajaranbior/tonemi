@@ -20,8 +20,9 @@ A personal Mandarin tone **production and recognition** trainer. Runs entirely i
   step can be picked directly). Partial questions count toward mix-ups but not toward tone-pattern scores. After each answer you see the speaker's real
   pitch chart, and on a mistake the textbook shape of the tone you picked drawn over it.
   The chart lives in a fixed-size box, so the buttons never move when the answer appears; after a
-  mistake a second tab plays your answer: the same recording with its pitch moved to the tones you
-  picked (TD-PSOLA resynthesis, so it's the same voice and word), or a real recording of another word
+  mistake *Your answer* (button under the chart, or the **F** key) plays the same recording with its pitch
+  moved to the tones you picked (TD-PSOLA resynthesis, so it's the same voice and word; the red line on the
+  chart is the shape it's moved to), or, when that can't be made, a real recording of another word
   with those tones. Optional streaks and points (Ear
   settings): a daily-practice streak that counts any answer, a right-in-a-row combo, and a bonus
   for getting a previously missed word right. Words are played in a random voice (the native

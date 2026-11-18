@@ -1,5 +1,6 @@
 import type { Segment } from '../analysis/segment'
-import { displayShape, type Tone } from '../analysis/tones'
+import { clearShape, type Tone } from '../analysis/tones'
+import { SHAPE_SPAN } from '../audio/retone'
 import type { PlotLabel, PlotLine } from './PitchPlot'
 
 /**
@@ -24,10 +25,11 @@ export function answerOverlay(
     const ok = chosen[i] === expected[i]
     const pick = chosen[i]
     if (!ok && pick !== null) {
-      const tpl = displayShape(pick, segments.length, i)
+      // The same shape "Your answer" is re-pitched to, completing early and holding as it does there.
+      const tpl = clearShape(pick, segments.length, i)
       // One point per frame: the plot breaks lines across gaps longer than 50 ms.
       for (let f = seg[0]; f < seg[1]; f++) {
-        const x = ((f - seg[0]) / Math.max(1, seg[1] - seg[0] - 1)) * (tpl.length - 1)
+        const x = Math.min(1, (f - seg[0]) / Math.max(1, (seg[1] - seg[0] - 1) * SHAPE_SPAN)) * (tpl.length - 1)
         const a = Math.floor(x)
         const b = Math.min(tpl.length - 1, a + 1)
         t.push((f - offset) * hop)

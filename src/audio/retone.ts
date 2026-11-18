@@ -29,7 +29,7 @@ const UNVOICED_STEP = 80
 /** Largest pitch change applied (semitones); bigger shifts sound robotic. */
 const MAX_SHIFT = 14
 /** Share of a syllable's voiced stretch over which a made tone's shape plays out (then it holds). */
-const SHAPE_SPAN = 0.85
+export const SHAPE_SPAN = 0.85
 
 const num = (v: number | null | undefined) => (v === null || v === undefined ? NaN : v)
 

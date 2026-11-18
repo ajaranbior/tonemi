@@ -342,7 +342,7 @@ export default function EarClips({ onAnswered, onOverride, game, onGame, source 
               cursor={cursor !== undefined && sSpan ? cursor - sSpan[0] : undefined}
               playing={playing}
               onPlay={() => void play(sClip)}
-              preview={g && !g.all && !ok ? { chosen: sChosen as Tone[], syllables: sClip.syllables, voice: sVoice } : null}
+              preview={g && !g.all && !ok ? { chosen: sChosen as Tone[], syllables: sClip.syllables, voice: sVoice, onCursor: (t) => setCursor(t === undefined || !sSpan ? undefined : sSpan[0] + t) } : null}
             />
 
             <div className="controls ear-controls">

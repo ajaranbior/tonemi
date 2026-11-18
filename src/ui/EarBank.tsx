@@ -412,7 +412,7 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
           cursor={cursor}
           playing={playing}
           onPlay={() => void listen()}
-          preview={g && !g.all && !ok ? { chosen: shownChosen as Tone[], exclude: realItem(shown).id, syllables: shown.syllables, voice } : null}
+          preview={g && !g.all && !ok ? { chosen: shownChosen as Tone[], exclude: realItem(shown).id, syllables: shown.syllables, voice, onCursor: setCursor } : null}
           sketch={
             flags.draw && !shownAnswered
               ? { line: sketchPlot, onDraw: (pt, start) => setSketch((sk) => extendSketch(sk, pt, start)), onClear: () => setSketch(null) }

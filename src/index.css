@@ -241,7 +241,6 @@ button.link { min-height: 0; padding: 0; border: 0; background: none; color: var
 .stage { height: 276px; display: flex; flex-direction: column; gap: 6px; }
 @media (max-height: 760px) { .stage { height: 250px; } }
 @media (min-width: 560px) and (min-height: 761px) { .stage { height: 320px; } }
-.stage-tabs { flex: none; }
 .stage-body { flex: 1; min-height: 0; display: flex; flex-direction: column; animation: fade-in 0.2s ease-out; }
 .stage-plot { position: relative; flex: 1; min-height: 0; }
 .stage-plot > .pitch-plot { position: absolute; inset: 0; width: 100%; }
@@ -258,15 +257,13 @@ button.link { min-height: 0; padding: 0; border: 0; background: none; color: var
 .stage-play span { font-size: 1.2rem; color: var(--accent); }
 .stage-play:disabled { opacity: 0.85; }
 .stage-play.corner { left: auto; right: 8px; top: 8px; transform: none; padding: 6px 12px; font-size: 0.85rem; }
-.stage-preview { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 4px; }
-.preview-head { flex: none; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.preview-word { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.preview-mode { flex: none; }
-.preview-mode button { flex: none; }
-/* With the source switcher in the head, the chart labels carry the pinyin. */
-.preview-mode ~ .preview-word .pinyin { display: none; }
-.preview-btns { display: flex; gap: 6px; flex: none; }
-.preview-btns button { min-height: 36px; min-width: 44px; padding: 4px 10px; }
+/* "Your answer" is a row inside the fixed-size stage, so showing it moves nothing below. */
+.answer-row { flex: none; display: flex; align-items: center; gap: 10px; min-width: 0; }
+.answer-play { flex: none; display: flex; align-items: center; gap: 6px; min-height: 36px; padding: 4px 12px; font-weight: 600; }
+.answer-play span { color: var(--bad); }
+.answer-play kbd { font: inherit; font-size: 0.72rem; padding: 0 5px; border: 1px solid var(--border); border-radius: 4px; color: var(--muted); }
+@media (hover: none) { .answer-play kbd { display: none; } }
+.answer-note { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Streaks and points */
 .game-bar { display: flex; align-items: center; gap: 6px 14px; flex-wrap: wrap; padding: 5px 12px; min-height: 36px; border-radius: 12px; background: var(--card); border: 1px solid var(--border); font-size: 0.9rem; }
@@ -345,7 +342,7 @@ select.text-input { appearance: auto; }
 .anki-preview { margin: 4px 0 10px; }
 .anki-counts { padding-left: 18px; margin: 6px 0; }
 .anki-table { width: 100%; border-collapse: collapse; }
-.anki-table th { text-align: left; font-weight: 600; color: var(--muted, inherit); }
+.anki-table th { text-align: left; font-weight: 600; color: var(--muted); }
 .anki-table th, .anki-table td { padding: 4px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
 .anki-table mark { background: color-mix(in srgb, var(--accent) 22%, transparent); color: inherit; border-radius: 3px; padding: 0 1px; }
 .anki-tones { white-space: nowrap; }

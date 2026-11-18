@@ -21,6 +21,8 @@ export interface BankItem {
   speaker: string
   /** Relative to the manifest. */
   audio: string
+  /** Where the main recording came from, when it isn't one of the bank's own speakers. */
+  source?: string
   ref: RefPitch
   /** The same word by other voices. */
   alts?: Recording[]

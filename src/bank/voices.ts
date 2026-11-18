@@ -43,11 +43,11 @@ export function voiceEnabled(manifest: Manifest, speaker: string, kind?: ItemKin
 
 /** Every recording of a word, the item's own first. */
 export function recordings(item: BankItem): Recording[] {
-  return [{ speaker: item.speaker, audio: item.audio, ref: item.ref }, ...(item.alts ?? [])]
+  return [{ speaker: item.speaker, audio: item.audio, source: item.source, ref: item.ref }, ...(item.alts ?? [])]
 }
 
 /** The item as spoken by `rec` (same id, so progress is shared across voices). */
-export const withRecording = (item: BankItem, rec: Recording): BankItem => ({ ...item, speaker: rec.speaker, audio: rec.audio, ref: rec.ref })
+export const withRecording = (item: BankItem, rec: Recording): BankItem => ({ ...item, speaker: rec.speaker, audio: rec.audio, source: rec.source, ref: rec.ref })
 
 const allowedRecordings = (item: BankItem) => recordings(item).filter((r) => !recordingExcluded(item.id, r.speaker))
 const enabledRecordings = (manifest: Manifest, item: BankItem) => allowedRecordings(item).filter((r) => voiceEnabled(manifest, r.speaker, item.kind))

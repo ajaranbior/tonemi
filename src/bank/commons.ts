@@ -35,3 +35,24 @@ export function speakerId(name: string): string {
   for (const ch of name) h = (h * 31 + ch.codePointAt(0)!) >>> 0
   return `ll-${h.toString(36)}`
 }
+
+const unescapeHtml = (s: string) =>
+  s.replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d))).replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&quot;/g, '"').replace(/&#039;|&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+
+/**
+ * One page of a Commons category as rendered HTML: its file titles (without "File:") and the
+ * site-relative link to the next page, if any. Used when the API is rate-limited but pages are not.
+ */
+export function parseCategoryPage(html: string): { titles: string[]; next: string | null } {
+  const titles = [...new Set([...html.matchAll(/title="File:([^"]+)"/g)].map((m) => unescapeHtml(m[1])))]
+  const next = /href="([^"]*filefrom=[^"]*)"[^>]*>next page</.exec(html)?.[1]
+  return { titles, next: next ? unescapeHtml(next).replace(/#.*$/, '') : null }
+}
+
+/** A Commons file page as rendered HTML → the original file's URL and its licence's short name. */
+export function parseFilePage(html: string): { url: string | null; license: string | undefined } {
+  const url = /href="(https:\/\/upload\.wikimedia\.org\/wikipedia\/commons\/[0-9a-f]\/[0-9a-f]{2}\/[^"]+)"/.exec(html)?.[1] ?? null
+  const license = /class="licensetpl(?:_|&#95;)short"[^>]*>([^<]+)</.exec(html)?.[1]
+  return { url: url && unescapeHtml(url), license: license && unescapeHtml(license).trim() }
+}

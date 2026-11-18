@@ -148,6 +148,7 @@ button.link { min-height: 0; padding: 0; border: 0; background: none; color: var
 .key.ref { background: var(--ref); opacity: 0.6; height: 6px; }
 .key.user { background: var(--user); }
 .key.focus { height: 12px; width: 14px; border-radius: 3px; background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.key.given { background: var(--ref); opacity: 0.3; height: 5px; }
 
 .syllables { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
 .syllables li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }

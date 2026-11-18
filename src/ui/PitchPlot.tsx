@@ -7,7 +7,7 @@ export interface PlotLine {
   /** Chao values; NaN breaks the line. */
   v: ArrayLike<number>
   /** 'wrong' (red) marks the tone the learner picked when it was incorrect. */
-  kind: 'ref' | 'user' | 'live' | 'wrong'
+  kind: 'ref' | 'user' | 'live' | 'wrong' | 'given'
   /** Draw straight through time gaps (hand-drawn strokes); NaN still breaks the line. */
   joined?: boolean
 }
@@ -239,10 +239,12 @@ function paint(
   g.setLineDash([])
 
   for (const line of lines) {
-    const color = line.kind === 'ref' ? css('--ref') : line.kind === 'wrong' ? css('--bad') : css('--user')
+    // 'given': the speaker's pitch on syllables whose tone was shown, greyed out behind the rest.
+    const grey = line.kind === 'ref' || line.kind === 'given'
+    const color = grey ? css('--ref') : line.kind === 'wrong' ? css('--bad') : css('--user')
     g.strokeStyle = color
-    g.lineWidth = line.kind === 'ref' ? 5 : 3
-    g.globalAlpha = line.kind === 'ref' ? 0.45 : 1
+    g.lineWidth = line.kind === 'ref' ? 5 : line.kind === 'given' ? 4 : 3
+    g.globalAlpha = line.kind === 'ref' ? 0.45 : line.kind === 'given' ? 0.28 : 1
     g.lineCap = 'round'
     g.lineJoin = 'round'
     g.beginPath()

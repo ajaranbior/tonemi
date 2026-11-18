@@ -62,3 +62,19 @@ function voicedExtent(seg: Segment, chao?: ArrayLike<number>): Segment {
   while (b > a && Number.isNaN(chao[b - 1])) b--
   return b - a >= 3 ? [a, b] : seg
 }
+
+/**
+ * The speaker's contour split by syllable: `asked` keeps the syllables the learner names (NaN elsewhere),
+ * `given` the syllables whose tones were shown, plus anything outside the syllables.
+ */
+export function splitGiven(chao: ArrayLike<number>, hop: number, segments: Segment[], given: boolean[]): { asked: PlotLine; given: PlotLine } {
+  const isAsked = new Uint8Array(chao.length)
+  segments.forEach((s, i) => {
+    if (!given[i]) for (let f = Math.max(0, s[0]); f < Math.min(chao.length, s[1]); f++) isAsked[f] = 1
+  })
+  const t = Array.from(chao, (_, i) => i * hop)
+  return {
+    asked: { t, v: Array.from(chao, (v, i) => (isAsked[i] ? v : NaN)), kind: 'ref' },
+    given: { t, v: Array.from(chao, (v, i) => (isAsked[i] ? NaN : v)), kind: 'given' },
+  }
+}

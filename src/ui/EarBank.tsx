@@ -15,7 +15,7 @@ import { Toggle } from './Toggle'
 import { LoopLength } from './LoopLength'
 import { VoiceSettings } from './VoiceSettings'
 import { PitchPlot, type PlotLine } from './PitchPlot'
-import { answerOverlay } from './earPlot'
+import { answerOverlay, splitGiven } from './earPlot'
 import { marked } from './tone'
 import { EarStage, ResultChip } from './EarStage'
 import { extendSketch, sketchLine, type Sketch } from './sketch'
@@ -368,6 +368,10 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
       ? `Which tone is the ${ORDINAL[at]} syllable?`
       : `Which tones are the ${askedIdx.map((i) => ORDINAL[i]).join(' and ')} syllables?`
   const kindNow = kind === 'path' ? PATH[path.level].kind : kind
+  const hintChao = given && !shownAnswered ? refChao(shown, refRange) : null
+  const hint = hintChao && given
+    ? { lines: [splitGiven(hintChao, hop, segments, given).given], boundaries: segments.slice(1).map((sg) => sg[0] * hop) }
+    : undefined
 
   return (
     <>
@@ -400,8 +404,9 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
         <EarStage
           key={shown.id + String(review.index)}
           answered={shownAnswered && !!g}
-          chart={g && <ReferenceChart item={shown} range={refRange} chosen={shownChosen} pinyin={pinyin} cursor={cursor} sketch={sketchPlot} focus={focus?.span} />}
+          chart={g && <ReferenceChart item={shown} range={refRange} chosen={shownChosen} pinyin={pinyin} cursor={cursor} sketch={sketchPlot} focus={focus?.span} given={given} />}
           focus={focus}
+          hint={hint}
           slots={shown.syllables.length}
           duration={shown.ref.st.length * shown.ref.hop}
           cursor={cursor}
@@ -511,17 +516,18 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
   )
 }
 
-export function ReferenceChart({ item, range, chosen, pinyin, cursor, sketch, focus }: { item: EarItem; range: SpeakerRange; chosen: (Tone | null)[]; pinyin: string[]; cursor?: number; sketch?: PlotLine | null; focus?: [number, number] }) {
+export function ReferenceChart({ item, range, chosen, pinyin, cursor, sketch, focus, given }: { item: EarItem; range: SpeakerRange; chosen: (Tone | null)[]; pinyin: string[]; cursor?: number; sketch?: PlotLine | null; focus?: [number, number]; given?: boolean[] }) {
   const { hop } = item.ref
   const chao = useMemo(() => refChao(item, range), [item, range])
   const { labels, guess, boundaries } = useMemo(
     () => answerOverlay(item.ref.segments, item.surface, chosen, pinyin, hop, 0, chao),
     [item, chosen, pinyin, hop, chao],
   )
-  const lines = useMemo<PlotLine[]>(
-    () => [{ t: Array.from(chao, (_, i) => i * hop), v: chao, kind: 'ref' as const }, ...(guess ? [guess] : []), ...(sketch ? [sketch] : [])],
-    [chao, hop, guess, sketch],
-  )
+  // With some tones given, their part of the contour is greyed out so the asked syllables stand out.
+  const lines = useMemo<PlotLine[]>(() => {
+    const parts = given?.some(Boolean) ? (({ asked, given: g }) => [g, asked])(splitGiven(chao, hop, item.ref.segments, given)) : [{ t: Array.from(chao, (_, i) => i * hop), v: chao, kind: 'ref' as const }]
+    return [...parts, ...(guess ? [guess] : []), ...(sketch ? [sketch] : [])]
+  }, [chao, hop, guess, sketch, given, item])
   const samples = useSamples(item.url)
   return (
     <>
@@ -530,6 +536,11 @@ export function ReferenceChart({ item, range, chosen, pinyin, cursor, sketch, fo
       </div>
       <div className="legend">
         <span className="key ref" /> the speaker's pitch
+        {given?.some(Boolean) && (
+          <>
+            <span className="key given" /> shown tones
+          </>
+        )}
         {guess && (
           <>
             <span className="key wrong" /> the tone you picked

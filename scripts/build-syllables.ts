@@ -21,7 +21,9 @@ const speaker = 'chen-wang'
 const source = 'https://github.com/hugolpz/audio-cmn'
 const manifest: Manifest = JSON.parse(readFileSync(join(out, 'manifest.json'), 'utf8'))
 const append = process.env.APPEND === '1'
-const candidates = manifest.items.filter((i) => i.kind === 'single' && i.syllables.length === 1 && i.surface[0] > 0 && (!append || !i.alts?.some((r) => r.speaker === speaker))).map((item) => ({
+// Words whose Chen Wang clip was removed as broken; do not re-import them.
+const skipped = new Set(['2-50'])
+const candidates = manifest.items.filter((i) => i.kind === 'single' && i.syllables.length === 1 && i.surface[0] > 0 && !skipped.has(i.id) && (!append || !i.alts?.some((r) => r.speaker === speaker))).map((item) => ({
   item,
   // audio-cmn uses ASCII v for ü, e.g. lv3.
   path: `64k/syllabs/cmn-${item.syllables[0].replace(/ü/g, 'v')}${item.surface[0]}.mp3`,

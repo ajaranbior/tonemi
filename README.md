@@ -59,7 +59,7 @@ See [docs/DESIGN.md](docs/DESIGN.md) for the concept and roadmap.
 
 ## More real voices
 
-The bank includes Yue Tan for all 696 words and Chen Wang for 200 of the 256 single-syllable items.
+The bank includes Yue Tan for all 696 words and Chen Wang for 199 of the 256 single-syllable items.
 There are 64 single-syllable words per tone, with 64 distinct syllable sounds within each tone.
 Human recordings are enabled by default; synthetic voices start off, including on existing installations.
 To rebuild Chen Wang's additions from an [audio-cmn](https://github.com/hugolpz/audio-cmn) clone (needs `ffmpeg`):

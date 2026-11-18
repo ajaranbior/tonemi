@@ -1,0 +1,2 @@
+function e(e){let n=[],r=e.replace(/\r/g,``).split(/\n\s*\n/),i=/((?:\d+:)?\d{1,2}:\d{2}[.,]\d{1,3})\s*-->\s*((?:\d+:)?\d{1,2}:\d{2}[.,]\d{1,3})/;for(let e of r){let r=e.split(`
+`),a=r.findIndex(e=>i.test(e));if(a<0)continue;let o=i.exec(r[a]),s=r.slice(a+1).join(` `).replace(/<[^>]+>/g,``).replace(/\{[^}]+\}/g,``).trim();s&&n.push({start:t(o[1]),end:t(o[2]),text:s})}return n.sort((e,t)=>e.start-t.start)}function t(e){return e.replace(`,`,`.`).split(`:`).map(Number).reduce((e,t)=>e*60+t,0)}export{e as t};

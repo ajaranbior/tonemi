@@ -365,10 +365,20 @@ export function EarSameDiff({ onAnswered }: Pick<EarProps, 'onAnswered'>) {
   const [step, setStep] = useState<number | null>(null)
   const token = useRef(0)
   const autoplay = useRef(false)
+  /** Answered questions, so Q / ← can step back to look and listen again. */
+  const [history, setHistory] = useState<{ q: SameDiffQ; said: boolean }[]>([])
+  const [view, setView] = useState<number | null>(null)
+  const recorded = useRef<SameDiffQ | null>(null)
 
   const next = useCallback(
     (play = true) => {
       if (!manifest) return
+      if (q && said !== null && recorded.current !== q) {
+        recorded.current = q
+        const done = { q, said }
+        setHistory((h) => [...h, done].slice(-50))
+      }
+      setView(null)
       const pool = usableItems(manifest).filter((i) => i.kind === kind)
       const w = weightBy(fresh, (i) => i.id)
       const a = pickWeighted(pool, w)
@@ -406,19 +416,24 @@ export function EarSameDiff({ onAnswered }: Pick<EarProps, 'onAnswered'>) {
         setQ({ a: pa, b: pb, same: same(pa.surface, pb.surface) })
       })
     },
-    [manifest, kind, fresh, retoned],
+    [manifest, kind, fresh, retoned, q, said],
   )
 
   useEffect(() => {
-    if (manifest) next(false)
+    let active = true
+    if (manifest) queueMicrotask(() => { if (active) next(false) })
+    return () => { active = false }
   }, [manifest, kind]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const shown = view !== null ? history[view] : q ? { q, said } : null
+  const shownQ = shown?.q ?? null
+
   const playBoth = useCallback(async () => {
-    if (!q) return
+    if (!shownQ) return
     const mine = ++token.current
-    await playSequence([q.a.url, q.b.url], () => mine === token.current, (i) => setStep(i < 0 ? null : i), 0.6)
+    await playSequence([shownQ.a.url, shownQ.b.url], () => mine === token.current, (i) => setStep(i < 0 ? null : i), 0.6)
     if (mine === token.current) setStep(null)
-  }, [q])
+  }, [shownQ])
 
   useEffect(() => {
     if (q && autoplay.current) {
@@ -430,15 +445,35 @@ export function EarSameDiff({ onAnswered }: Pick<EarProps, 'onAnswered'>) {
 
   const answer = useCallback(
     (sameSaid: boolean) => {
-      if (!q || said !== null) return
+      if (!q || said !== null || view !== null) return
       const ok = sameSaid === q.same
       setSaid(sameSaid)
       recordEarSeen(q.a.seenKey, ok)
       onAnswered(ok, { comeback: false })
       if (sound) playFeedback(ok, false)
     },
-    [q, said, onAnswered, sound],
+    [q, said, onAnswered, sound, view],
   )
+
+  const stop = () => {
+    ++token.current
+    stopPlayback()
+    setStep(null)
+  }
+  const back = useCallback(() => {
+    const at = view ?? history.length
+    if (at > 0) {
+      stop()
+      setView(at - 1)
+    }
+  }, [view, history.length])
+  /** Toward the present; from the live question once answered, on to a new one. */
+  const forward = useCallback(() => {
+    if (view !== null) {
+      stop()
+      setView(view + 1 < history.length ? view + 1 : null)
+    } else if (said !== null) next()
+  }, [view, history.length, said, next])
 
   const playOne = (url: string, i: number) => {
     const mine = ++token.current
@@ -449,23 +484,29 @@ export function EarSameDiff({ onAnswered }: Pick<EarProps, 'onAnswered'>) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || !q || inField(e)) return
-      if (e.key === 'Enter' || e.key === 'ArrowRight') {
-        if (said !== null) next()
+      if (e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'e' || e.key === 'E') {
+        e.preventDefault()
+        forward()
+      } else if (e.key === 'ArrowLeft' || e.key === 'q' || e.key === 'Q') {
+        e.preventDefault()
+        back()
       } else if (e.key === ' ' || e.key === 'r' || e.key === 'R') {
         e.preventDefault()
         if (!e.repeat) void playBoth()
-      } else if (said === null && (e.key === 's' || e.key === 'S' || e.key === '1')) answer(true)
-      else if (said === null && (e.key === 'd' || e.key === 'D' || e.key === '2')) answer(false)
+      } else if (said === null && view === null && (e.key === 's' || e.key === 'S' || e.key === '1')) answer(true)
+      else if (said === null && view === null && (e.key === 'd' || e.key === 'D' || e.key === '2')) answer(false)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [q, said, next, playBoth, answer])
+  }, [q, said, view, forward, back, playBoth, answer])
 
   if (error) return <div className="card error"><p>{error}</p></div>
-  if (!manifest || !q) return <div className="card">Loading word bank…</div>
+  if (!manifest || !shown || !shownQ) return <div className="card">Loading word bank…</div>
 
-  const answered = said !== null
-  const ok = said === q.same
+  const q2 = shownQ
+  const shownSaid = shown.said
+  const answered = shownSaid !== null
+  const ok = shownSaid === q2.same
   const g = answered ? { correct: [ok], all: ok } : null
 
   return (
@@ -473,10 +514,11 @@ export function EarSameDiff({ onAnswered }: Pick<EarProps, 'onAnswered'>) {
       <section className={`card ${g ? (ok ? 'flash-ok' : 'flash-bad') : ''}`}>
         <div className="item-head ear-head">
           <h3 className="ear-q">Same tone pattern, or different?</h3>
-          {g && <ResultChip key={q.a.id + q.b.id + String(said)} grade={g} />}
+          {view !== null && <div className="review-slot"><span className="review-pill">↩ Review {view + 1} of {history.length}</span></div>}
+          {g && <ResultChip key={q2.a.id + q2.b.id + String(shownSaid) + String(view)} grade={g} />}
         </div>
         <div className="pair-cards">
-          {[q.a, q.b].map((it, i) => (
+          {[q2.a, q2.b].map((it, i) => (
             <button key={i} className={`pair-card ${step === i ? 'on' : ''}`} onClick={() => playOne(it.url, i)}>
               <span className="muted small">{i ? 'B' : 'A'} ▶</span>
               {answered ? (
@@ -497,13 +539,14 @@ export function EarSameDiff({ onAnswered }: Pick<EarProps, 'onAnswered'>) {
           <button className="primary" onClick={() => void playBoth()} disabled={step !== null}>▶ Play A then B</button>
         </div>
         <div className="ab-choices">
-          <button className={`big ${answered ? (q.same ? 'ok' : said ? 'wrong' : '') : ''}`} disabled={answered} onClick={() => answer(true)}>Same (S)</button>
-          <button className={`big ${answered ? (!q.same ? 'ok' : !said ? 'wrong' : '') : ''}`} disabled={answered} onClick={() => answer(false)}>Different (D)</button>
+          <button className={`big ${answered ? (q2.same ? 'ok' : shownSaid ? 'wrong' : '') : ''}`} disabled={answered} onClick={() => answer(true)}>Same (S)</button>
+          <button className={`big ${answered ? (!q2.same ? 'ok' : !shownSaid ? 'wrong' : '') : ''}`} disabled={answered} onClick={() => answer(false)}>Different (D)</button>
         </div>
         <div className="nav-row">
-          <span />
-          {answered ? <button className="primary" onClick={() => next()}>Next →</button> : <button onClick={() => next()}>Skip →</button>}
+          <button onClick={back} disabled={(view ?? history.length) === 0}>← Back</button>
+          {answered ? <button className="primary" onClick={forward}>Next →</button> : <button onClick={() => next()}>Skip →</button>}
         </div>
+        <p className="muted small keys">Keys: S same · D different · Space replay · Q ← previous · E → Enter next</p>
       </section>
       <div className="options">
         <p className="muted small">Word length</p>

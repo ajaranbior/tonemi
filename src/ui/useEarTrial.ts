@@ -134,11 +134,20 @@ export function useEarControls<T>(session: ReturnType<typeof useEarTrial<T>>, ch
     setChosen(answers)
     if (autoReveal && answers.every((c) => c !== null)) check(answers)
   }, [shownAnswered, chosen, setChosen, autoReveal, check])
+  /** Set when stepping forward out of review, so the live question is played again once it is on screen. */
+  const replay = useRef(false)
   const advance = useCallback(() => {
     cancelFeedback()
-    if (rv) review.forward()
-    else next()
+    if (rv) {
+      replay.current = review.index !== null && review.index + 1 >= review.count
+      review.forward()
+    } else next()
   }, [cancelFeedback, rv, review, next])
+  useEffect(() => {
+    if (rv || !replay.current) return
+    replay.current = false
+    listen()
+  }, [rv, listen])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

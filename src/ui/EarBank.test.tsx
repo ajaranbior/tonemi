@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BankItem } from '../bank/types'
 import { setPref } from '../store'
 import { EarBank } from './EarBank'
+import { playUrl } from '../audio/playback'
 import { prepareItem, type EarItem } from './earItem'
 
 const { base, manifest } = vi.hoisted(() => {
@@ -19,7 +20,7 @@ vi.mock('./useSamples', () => ({ useSamples: () => null }))
 vi.mock('./EarStage', () => ({ EarStage: () => null, ResultChip: () => null }))
 vi.mock('./PitchPlot', () => ({ PitchPlot: () => null }))
 vi.mock('./VoiceSettings', () => ({ VoiceSettings: () => null }))
-vi.mock('../audio/playback', () => ({ playUrl: async () => {}, stopPlayback: vi.fn(), playSequence: async () => {}, wavUrl: () => 'blob:unused' }))
+vi.mock('../audio/playback', () => ({ playUrl: vi.fn(async () => {}), stopPlayback: vi.fn(), playSequence: async () => {}, wavUrl: () => 'blob:unused' }))
 
 let root: Root
 let container: HTMLDivElement
@@ -51,6 +52,21 @@ afterEach(() => {
   act(() => root.unmount())
   container.remove()
   vi.restoreAllMocks()
+})
+
+describe('EarBank review', () => {
+  it('replays the current question when stepping forward out of review', async () => {
+    await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', { key: '2' })))
+    await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', { key: '3' })))
+    vi.mocked(prepareItem).mockResolvedValueOnce(generated(1))
+    await click('Next →')
+    await click('← Back')
+    vi.mocked(playUrl).mockClear()
+    await click('Next →')
+    expect(container.textContent).not.toContain('Review')
+    expect(playUrl).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(playUrl).mock.calls[0][0]).toBe('blob:melody-1')
+  })
 })
 
 describe('EarBank generated audio', () => {

@@ -450,15 +450,6 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
             ))}
           </div>
         )}
-        {shownAnswered && shown.from && (
-          <p className="muted small retoned-note">
-            🎛 Retoned: {shown.hanzi} is really{' '}
-            {marked(shown.from.syllables, shown.from.surface).map((p, i) => (
-              <span key={i} className={`t${shown.from!.surface[i]}`}>{p} </span>
-            ))}
-            ({shown.from.surface.join('-')}); for this question the app moved its pitch to {shown.surface.join('-')}.
-          </p>
-        )}
 
         <h3 className="ear-q">{shownAnswered ? 'Answer' : question}</h3>
         <ToneAnswer chosen={shownChosen} expected={shownAnswered ? shown.surface : undefined} onPick={pick} given={given} />
@@ -473,6 +464,15 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
             <button onClick={() => next(kind, item)}>Skip →</button>
           )}
         </div>
+        {shownAnswered && shown.from && (
+          <p className="muted small retoned-note">
+            🎛 Retoned: {shown.hanzi} is really{' '}
+            {marked(shown.from.syllables, shown.from.surface).map((p, i) => (
+              <span key={i} className={`t${shown.from!.surface[i]}`}>{p} </span>
+            ))}
+            ({shown.from.surface.join('-')}); for this question the app moved its pitch to {shown.surface.join('-')}.
+          </p>
+        )}
         {g && !g.all && (
           <button className="link small" onClick={toggleAccept}>{ok ? 'Undo: count this as incorrect again (M)' : 'I was right — mark my answer as correct (M)'}</button>
         )}

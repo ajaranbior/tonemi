@@ -89,7 +89,15 @@ export function PitchPlot({ lines, duration, boundaries = [], labels = [], curso
     const t = ((e.clientX - r.left - PLOT_LEFT) / Math.max(1, r.width - PLOT_LEFT - PLOT_RIGHT)) * Math.max(duration, 0.1)
     return Math.max(0, Math.min(duration, t))
   }
-  const hear = (t: number) => scrubber?.set(scrub!.offset + t)
+  // Only loop where the speaker's line is drawn: the gaps are consonants, breaths or silence.
+  const voiced = useMemo(() => {
+    const own = lines.filter((l) => l.kind === 'ref' || l.kind === 'given')
+    return own.length ? own : lines.filter((l) => l.kind !== 'user' && l.kind !== 'live')
+  }, [lines])
+  const hear = (t: number) => {
+    if (voiced.some((l) => onLine(l, t))) scrubber?.set(scrub!.offset + t)
+    else scrubber?.stop()
+  }
   const release = () => {
     scrubber?.stop()
     setProbe((p) => (p ? { ...p, held: false } : p))
@@ -151,6 +159,22 @@ export function PitchPlot({ lines, duration, boundaries = [], labels = [], curso
       {...handlers}
     />
   )
+}
+
+/** Whether `line` has a pitch at time `t` (its nearest point is finite and close by). */
+function onLine({ t: ts, v }: PlotLine, t: number): boolean {
+  const n = ts.length
+  if (!n) return false
+  let lo = 0
+  let hi = n - 1
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if (ts[mid] < t) lo = mid + 1
+    else hi = mid
+  }
+  const i = lo > 0 && t - ts[lo - 1] < ts[lo] - t ? lo - 1 : lo
+  const step = n > 1 ? (ts[n - 1] - ts[0]) / (n - 1) : 0
+  return Number.isFinite(v[i]) && Math.abs(ts[i] - t) <= Math.max(step * 1.5, 0.02)
 }
 
 const PLOT_LEFT = 22

@@ -316,15 +316,15 @@ export function EarContrast({ onAnswered }: Pick<EarProps, 'onAnswered'>) {
             <button onClick={() => shownOther && listen(shownOther)} disabled={playing || !shownOther}>▶ as {toneName(other)}</button>
           </div>
         )}
+        <div className="nav-row">
+          <button onClick={back} disabled={(view ?? history.length) === 0}>← Back</button>
+          {answered ? <button className="primary" onClick={forward}>Next →</button> : <button onClick={() => next()}>Skip →</button>}
+        </div>
         {answered && item.from && (
           <p className="muted small retoned-note">
             🎛 Retoned: {item.hanzi} is really <Pattern item={item.from} />; the app moved its pitch for this question.
           </p>
         )}
-        <div className="nav-row">
-          <button onClick={back} disabled={(view ?? history.length) === 0}>← Back</button>
-          {answered ? <button className="primary" onClick={forward}>Next →</button> : <button onClick={() => next()}>Skip →</button>}
-        </div>
         <p className="muted small keys">Keys: {asked[0]} / {asked[1]} answer · Space replay · Q ← previous · E → Enter next</p>
       </section>
       <div className="options">

@@ -9,13 +9,26 @@ interface Props {
   /** Set once answered: marks right/wrong buttons and locks input. */
   expected?: Tone[]
   onPick: (index: number, tone: Tone) => void
+  /** Syllables whose tone is given (shown, not asked). */
+  given?: boolean[]
 }
 
 /** One row of tone buttons per syllable. */
-export function ToneAnswer({ chosen, expected, onPick }: Props) {
+export function ToneAnswer({ chosen, expected, onPick, given }: Props) {
   return (
     <div className="tone-rows">
-      {chosen.map((pick, i) => (
+      {chosen.map((pick, i) => given?.[i] ? (
+        <div className="tone-row given" key={i} aria-label={`${ORDINAL[i]} syllable: given`}>
+          <span className="row-mark given" title="Given: this tone is shown, not asked">·</span>
+          {OPTIONS.map((tone) => (
+            <button key={tone} className={`tone-btn t${tone} ${pick === tone ? 'given-tone' : ''}`} disabled tabIndex={-1} aria-hidden={pick !== tone}
+              aria-label={`${ORDINAL[i]} syllable is given: ${tone === 0 ? 'neutral tone' : `tone ${tone}`}`}>
+              <strong>{tone === 0 ? '5' : tone}</strong>
+              <ToneGlyph tone={tone} />
+            </button>
+          ))}
+        </div>
+      ) : (
         <div className="tone-row" key={i}>
           {expected ? (
             <span className={`row-mark ${pick === expected[i] ? 'ok' : 'bad'}`} aria-label={pick === expected[i] ? 'correct' : 'wrong'}>

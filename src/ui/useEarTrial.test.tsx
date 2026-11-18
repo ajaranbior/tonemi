@@ -8,8 +8,8 @@ import { useEarControls, useEarTrial, type TrialSource } from './useEarTrial'
 
 vi.mock('../audio/sfx', () => ({ FEEDBACK_SECONDS: 0.2, playFeedback: vi.fn() }))
 
-interface Item { id: string; tones: Tone[] }
-const source: TrialSource<Item> = { id: (i) => i.id, tones: (i) => i.tones }
+interface Item { id: string; tones: Tone[]; given?: boolean[] }
+const source: TrialSource<Item> = { id: (i) => i.id, tones: (i) => i.tones, given: (i) => i.given }
 const bankSource = { ...source, seenKey: (i: Item) => i.id }
 const first: Item = { id: 'trial-first', tones: [1, 4] }
 let session: ReturnType<typeof useEarTrial<Item>>
@@ -31,7 +31,7 @@ function Harness({ bank = false, patterns = false }: { bank?: boolean; patterns?
 }
 
 const key = (value: string, target: EventTarget = window) => act(() => { target.dispatchEvent(new KeyboardEvent('keydown', { key: value, bubbles: true, cancelable: true })) })
-const start = (item = first) => act(() => { setItem(item); session.reset(item.tones) })
+const start = (item = first) => act(() => { setItem(item); session.reset(item.tones, item.given) })
 const mount = (bank = false, patterns = false) => {
   act(() => root.render(<Harness bank={bank} patterns={patterns} />))
   start()
@@ -156,5 +156,24 @@ describe('shared Ear trials', () => {
     act(() => root.render(null))
     act(() => vi.runAllTimers())
     expect(replay).not.toHaveBeenCalled()
+  })
+
+  it('asks only the hidden syllables of a partial question and leaves pattern stats alone', () => {
+    mount()
+    act(() => session.setAutoReveal(true))
+    start({ id: 'partial', tones: [3, 2, 4], given: [true, false, true] })
+    expect(session.chosen).toEqual([3, null, 4])
+    act(() => controls.pick(0, 1))
+    expect(session.chosen).toEqual([3, null, 4])
+    key('Backspace')
+    expect(session.chosen).toEqual([3, null, 4])
+    const before = getEarCombos()['324']?.n ?? 0
+    const confusion = getEarConfusions()['2>3'] ?? 0
+    key('3')
+    expect(session.answered).toBe(true)
+    expect(session.chosen).toEqual([3, 3, 4])
+    expect(getEarCombos()['324']?.n ?? 0).toBe(before)
+    expect(getEarConfusions()['2>3']).toBe(confusion + 1)
+    expect(onAnswered).toHaveBeenLastCalledWith(false, expect.objectContaining({ milestone: undefined }))
   })
 })

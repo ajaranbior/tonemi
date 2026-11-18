@@ -13,6 +13,8 @@ export interface TrialSource<T> {
   tones: (item: T) => Tone[]
   id: (item: T) => string
   seenKey?: (item: T) => string
+  /** Syllables whose tones are shown and pre-filled (partial questions); only the others are asked. */
+  given?: (item: T) => boolean[] | undefined
 }
 
 /** Shared scoring, retries and review for bank words and clips. Audio stays with the source. */
@@ -41,12 +43,12 @@ export function useEarTrial<T>(item: T | null, source: TrialSource<T>, props: Pi
     }
   }, [item, answered, chosen, accepted, record])
 
-  const reset = useCallback((tones: Tone[]) => {
+  const reset = useCallback((tones: Tone[], given?: boolean[]) => {
     cancelFeedback()
     leave()
     archived.current = false
     lastRec.current = null
-    setChosen(tones.map(() => null))
+    setChosen(tones.map((t, i) => (given?.[i] ? t : null)))
     setAnswered(false)
     setAccepted(false)
     setComeback(false)
@@ -61,9 +63,11 @@ export function useEarTrial<T>(item: T | null, source: TrialSource<T>, props: Pi
     const conf = tones.flatMap((t, i) => g.correct[i] ? [] : [`${t}>${answers[i]}`])
     const first = source.seenKey ? recordEarSeen(source.seenKey(item), g.all) : undefined
     lastRec.current = { key, conf, first }
+    // A partial question says little about hearing the whole pattern, so it leaves pattern stats alone.
+    const partial = !!source.given?.(item)?.some(Boolean)
     const before = getEarCombos()[key]
     const stat = updateStat(before, g.all)
-    setEarCombo(key, stat)
+    if (!partial) setEarCombo(key, stat)
     const back = g.all && retry.current.some((r) => retryOther ? r.pattern === key : r.id === id)
     conf.forEach(addEarConfusion)
     trial.current++
@@ -72,7 +76,7 @@ export function useEarTrial<T>(item: T | null, source: TrialSource<T>, props: Pi
     setChosen(answers)
     setAnswered(true)
     setComeback(back)
-    onAnswered(g.all, { comeback: back, milestone: turnedGreen(before?.ema, stat.ema, stat.n) ? [...key].join('-') : undefined })
+    onAnswered(g.all, { comeback: back, milestone: !partial && turnedGreen(before?.ema, stat.ema, stat.n) ? [...key].join('-') : undefined })
     if (sound) playFeedback(g.all, game && back)
     return g
   }, [item, answered, chosen, review.reviewing, source, retryOther, onAnswered, sound, game])
@@ -110,30 +114,31 @@ export function useEarTrial<T>(item: T | null, source: TrialSource<T>, props: Pi
     }
   }, [wrong, rv, review, item, answered, accepted, source, retryOther, onOverride])
 
+  const given = (item && source.given?.(item)) || undefined
   const undo = useCallback(() => {
     if (answered || rv) return
     setChosen((c) => {
-      const last = c.map((x) => x !== null).lastIndexOf(true)
+      const last = c.map((x, i) => x !== null && !given?.[i]).lastIndexOf(true)
       return last < 0 ? c : c.map((x, i) => i === last ? null : x)
     })
-  }, [answered, rv])
+  }, [answered, rv, given])
 
   const setSound = (v: boolean) => { setSoundState(v); setPref('ear.sound', v) }
   const setAutoReveal = (v: boolean) => { setAutoRevealState(v); setPref('ear.auto', v) }
   return { chosen, setChosen, answered, accepted, comeback, sound, setSound, autoReveal, setAutoReveal,
     trial, retry, review, archive, reset, submit, afterFeedback, cancelFeedback,
-    rv, shown, shownChosen, shownAnswered, wrong, toggleAccept, undo }
+    rv, shown, shownChosen, shownAnswered, wrong, toggleAccept, undo, given }
 }
 
 /** Buttons and keyboard share the same entry and navigation rules. */
 export function useEarControls<T>(session: ReturnType<typeof useEarTrial<T>>, check: (answers?: (Tone | null)[]) => void, next: () => void, listen: () => void) {
-  const { shown, shownAnswered, chosen, setChosen, autoReveal, rv, review, undo, toggleAccept, wrong, cancelFeedback } = session
+  const { shown, shownAnswered, chosen, setChosen, autoReveal, rv, review, undo, toggleAccept, wrong, cancelFeedback, given } = session
   const pick = useCallback((index: number, tone: Tone) => {
-    if (shownAnswered) return
+    if (shownAnswered || given?.[index]) return
     const answers = chosen.map((x, i) => i === index ? (x === tone ? null : tone) : x)
     setChosen(answers)
     if (autoReveal && answers.every((c) => c !== null)) check(answers)
-  }, [shownAnswered, chosen, setChosen, autoReveal, check])
+  }, [shownAnswered, chosen, setChosen, autoReveal, check, given])
   /** Set when stepping forward out of review, so the live question is played again once it is on screen. */
   const replay = useRef(false)
   const advance = useCallback(() => {

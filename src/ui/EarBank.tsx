@@ -8,6 +8,7 @@ import type { BankItem, ItemKind, Manifest } from '../bank/types'
 import { manyVoices, pickVoice, recordingExcluded, setRecordingExcluded, usableItems, useVoiceVersion, voiceCount, voiceLabel } from '../bank/voices'
 import { duePattern, dueRetry, freshWeight, grade, melodyLevel, pickByCombo, pickWeighted } from '../ear/adapt'
 import { useFlag } from '../flags'
+import { givenMask, levelProgress, parsePath, passed, PATH, pathAnswer, type PathState } from '../ear/path'
 import { getEarCombos, getEarSeen, getPref, setPref } from '../store'
 import { answerUrl, EarAudioPool, prepareItem, realItem, releaseItem, type EarItem } from './earItem'
 import { Toggle } from './Toggle'
@@ -25,8 +26,11 @@ import { isSnippet } from '../snippets/store'
 import { BankScope } from './BankScope'
 import { useSamples } from './useSamples'
 
-type Kind = ItemKind | 'mix'
-const KINDS: [Kind, string][] = [['single', '1 syllable'], ['pair', '2'], ['triple', '3'], ['mix', 'Mix']]
+type Kind = ItemKind | 'mix' | 'path'
+const KINDS: [Kind, string][] = [['single', '1 syllable'], ['pair', '2'], ['triple', '3'], ['mix', 'Mix'], ['path', '🧭 Path']]
+/** How many tones to name in a 2- or 3-syllable word; the rest are given. */
+type Hide = '1' | '2' | 'all'
+const ORDINAL = ['1st', '2nd', '3rd', '4th', '5th', '6th']
 const BASIC: ItemKind[] = ['single', 'pair', 'triple']
 
 const comboKey = (i: BankItem) => i.surface.join('')
@@ -34,9 +38,9 @@ const LENGTH: Record<ItemKind, number> = { single: 1, pair: 2, triple: 3 }
 /** Share of questions that are a word moved to other tones, when retoned questions are on. */
 const RETONE_SHARE = 0.5
 
-/** An asked word plus the learner's drawing of it (draw-the-pitch mode). */
-type Asked = EarItem & { sketch?: Sketch | null }
-const source: TrialSource<Asked> = { tones: (i) => i.surface, id: (i) => realItem(i).id, seenKey: (i) => i.seenKey }
+/** An asked word plus the learner's drawing of it (draw-the-pitch mode) and the syllables given away. */
+type Asked = EarItem & { sketch?: Sketch | null; given?: boolean[] }
+const source: TrialSource<Asked> = { tones: (i) => i.surface, id: (i) => realItem(i).id, seenKey: (i) => i.seenKey, given: (i) => i.given }
 
 export interface AnswerExtra {
   /** Right on a word that was missed a few trials earlier. */
@@ -59,6 +63,15 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
   const [error, setError] = useState<string | null>(null)
   const [kind, setKind] = useState<Kind>(() => getPref('ear.kind', 'pair') as Kind)
   const [showHanzi, setShowHanzi] = useState(() => getPref<boolean>('ear.hanzi', false))
+  const [hide, setHideState] = useState<Hide>(() => getPref('ear.hide', 'all') as Hide)
+  const [path, setPathState] = useState<PathState>(() => parsePath(getPref('ear.path', '')))
+  const pathRef = useRef(path)
+  const [levelUp, setLevelUp] = useState<number | null>(null)
+  const setPath = (p: PathState) => {
+    pathRef.current = p
+    setPathState(p)
+    setPref('ear.path', JSON.stringify(p))
+  }
   const [item, setItem] = useState<Asked | null>(null)
   const [sketch, setSketch] = useState<Sketch | null>(null)
   /** Auto A/B after a miss: 0 right, 1 yours, 2 right again; null when not playing. */
@@ -105,6 +118,10 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
     (k: Kind, avoid?: Asked | null, play = true) => {
       if (!manifest) return
       const usable = usableItems(onlySnippets ? { ...manifest, items: manifest.items.filter(isSnippet) } : manifest)
+      const level = k === 'path' ? PATH[pathRef.current.level] : undefined
+      // How many syllables are asked; the others are given away.
+      const asked = level ? level.hide : hide === 'all' || k === 'mix' ? Infinity : Number(hide)
+      if (level) k = level.kind
       const byId = new Map(usable.map((i) => [i.id, i]))
       const inKind = (i: BankItem) => k === 'mix' || i.kind === k
       const avoidId = avoid ? realItem(avoid).id : undefined
@@ -116,7 +133,7 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
 
       if (flags.retryOther) {
         // A missed pattern comes back in another word (or the same word moved to it, or as a last resort the same word).
-        const fits = (pattern: string) => k === 'mix' || pattern.length === LENGTH[k]
+        const fits = (pattern: string) => k === 'mix' || pattern.length === LENGTH[k as ItemKind]
         const due = duePattern(retry.current, trial.current, (r) => fits(r.pattern!))
         if (due) {
           const pattern = [...due.pattern!].map(Number) as Tone[]
@@ -162,12 +179,12 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
       }
       pick = pickVoice(manifest, pick, lastVoice.current.get(pick.id))
       lastVoice.current.set(pick.id, pick.speaker)
-      const level = flags.melody ? melodyLevel(getEarCombos()[(target ?? pick.surface).join('')]) : 'full'
+      const melody = flags.melody ? melodyLevel(getEarCombos()[(target ?? pick.surface).join('')]) : 'full'
       const mine = ++nextToken.current
       cancelFeedback()
       ++playToken.current
       stopPlayback()
-      void prepareItem(manifest, pick, target, level).then((ready) => {
+      void prepareItem(manifest, pick, target, melody).then((ready) => {
         if (mine !== nextToken.current) return releaseItem(ready)
         ++playToken.current
         stopPlayback()
@@ -175,14 +192,16 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
         setCursor(undefined)
         audioPool.add(ready)
         archive(item ? { ...item, sketch } : null)
-        reset(ready.surface)
+        const mask = givenMask(ready.surface.length, asked)
+        const given = mask.some(Boolean) ? mask : undefined
+        reset(ready.surface, given)
         setSketch(null)
         setAbStep(null)
         autoplay.current = play
-        setItem(ready)
+        setItem({ ...ready, given })
       })
     },
-    [manifest, onlySnippets, item, sketch, archive, reset, cancelFeedback, audioPool, trial, retry, flags.fresh, flags.retryOther, flags.retoned, flags.melody],
+    [manifest, onlySnippets, item, sketch, archive, reset, cancelFeedback, audioPool, trial, retry, hide, flags.fresh, flags.retryOther, flags.retoned, flags.melody],
   )
 
   useEffect(() => {
@@ -238,7 +257,7 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
       setCursor(undefined)
       audioPool.add(ready)
       autoplay.current = true
-      setItem({ ...ready, sketch: item.sketch })
+      setItem({ ...ready, sketch: item.sketch, given: item.given })
     })
   }
 
@@ -264,15 +283,39 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
   const choose = (k: Kind) => {
     setKind(k)
     setPref('ear.kind', k)
+    setLevelUp(null)
     next(k, item)
+  }
+  const chooseHide = (h: Hide) => {
+    setHideState(h)
+    setPref('ear.hide', h)
+  }
+  // A new number of tones to name applies from a fresh question.
+  const hideRef = useRef(hide)
+  useEffect(() => {
+    if (hideRef.current === hide) return
+    hideRef.current = hide
+    next(kind, item)
+  }, [hide, kind, item, next])
+  const chooseLevel = (l: number) => {
+    setPath({ ...pathRef.current, level: l })
+    setLevelUp(null)
+    next('path', item)
   }
 
   const check = useCallback((answers: (Tone | null)[] = chosen) => {
     const g = submit(answers)
     if (!g || !item) return
+    if (kind === 'path') {
+      const r = pathAnswer(pathRef.current, g.all)
+      pathRef.current = r.state
+      setPathState(r.state)
+      setPref('ear.path', JSON.stringify(r.state))
+      if (r.levelUp) setLevelUp(r.state.level)
+    }
     if (!g.all && flags.autoAB) afterFeedback(() => void playAB(item, answers as Tone[]))
     else if (!g.all || item.melody) afterFeedback(() => void listen(1, true))
-  }, [submit, chosen, item, flags.autoAB, afterFeedback, playAB, listen])
+  }, [submit, chosen, item, kind, flags.autoAB, afterFeedback, playAB, listen])
 
   const { pick, advance } = useEarControls(session, check, () => next(kind, item), () => void listen())
 
@@ -307,6 +350,24 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
 
   const pinyin = marked(shown.syllables, shown.surface)
   const ok = rv ? !!rv.accepted : accepted
+  const given = shown.given
+  const askedIdx = given ? given.flatMap((g, i) => (g ? [] : [i])) : []
+  // One syllable asked in a longer word: outline where it is.
+  const { hop, segments } = shown.ref
+  const at = askedIdx.length === 1 ? askedIdx[0] : -1
+  const focus =
+    at >= 0 && segments.length > 1 && segments[at]
+      ? {
+          span: [segments[at][0] * hop, segments[at][1] * hop] as [number, number],
+          others: segments.flatMap((sg, k) => (k === at ? [] : [[sg[0] * hop, sg[1] * hop] as [number, number]])),
+        }
+      : undefined
+  const question = !given
+    ? `Which ${shown.syllables.length > 1 ? 'tones' : 'tone'} do you hear?`
+    : at >= 0
+      ? `Which tone is the ${ORDINAL[at]} syllable?`
+      : `Which tones are the ${askedIdx.map((i) => ORDINAL[i]).join(' and ')} syllables?`
+  const kindNow = kind === 'path' ? PATH[path.level].kind : kind
 
   return (
     <>
@@ -339,7 +400,8 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
         <EarStage
           key={shown.id + String(review.index)}
           answered={shownAnswered && !!g}
-          chart={g && <ReferenceChart item={shown} range={refRange} chosen={shownChosen} pinyin={pinyin} cursor={cursor} sketch={sketchPlot} />}
+          chart={g && <ReferenceChart item={shown} range={refRange} chosen={shownChosen} pinyin={pinyin} cursor={cursor} sketch={sketchPlot} focus={focus?.span} />}
+          focus={focus}
           slots={shown.syllables.length}
           duration={shown.ref.st.length * shown.ref.hop}
           cursor={cursor}
@@ -393,8 +455,8 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
           </p>
         )}
 
-        <h3 className="ear-q">{shownAnswered ? 'Answer' : `Which ${shown.syllables.length > 1 ? 'tones' : 'tone'} do you hear?`}</h3>
-        <ToneAnswer chosen={shownChosen} expected={shownAnswered ? shown.surface : undefined} onPick={pick} />
+        <h3 className="ear-q">{shownAnswered ? 'Answer' : question}</h3>
+        <ToneAnswer chosen={shownChosen} expected={shownAnswered ? shown.surface : undefined} onPick={pick} given={given} />
 
         <div className="nav-row">
           <button onClick={review.back} disabled={!review.canBack}>← Back</button>
@@ -416,12 +478,26 @@ export function EarBank({ onAnswered, onOverride, game, onGame }: EarProps) {
         <p className="muted small">Word length</p>
         <div className="segmented compact" role="tablist" aria-label="Word length">
           {KINDS.map(([k, label]) => (
-            <button key={k} disabled={onlySnippets && k !== 'mix' && !manifest.items.some((i) => isSnippet(i) && i.kind === k)} role="tab" aria-selected={kind === k} className={kind === k ? 'active' : ''} onClick={() => choose(k)}>
+            <button key={k} disabled={onlySnippets && k !== 'mix' && (k === 'path' || !manifest.items.some((i) => isSnippet(i) && i.kind === k))} role="tab" aria-selected={kind === k} className={kind === k ? 'active' : ''} onClick={() => choose(k)}>
               {label}
             </button>
           ))}
         </div>
+        {(kind === 'pair' || kind === 'triple') && (
+          <>
+            <p className="muted small">Tones to name (the others are shown)</p>
+            <div className="segmented compact" role="tablist" aria-label="Tones to name">
+              {((kindNow === 'pair' ? [['1', '1'], ['all', 'Both']] : [['1', '1'], ['2', '2'], ['all', 'All 3']]) as [Hide, string][]).map(([h, label]) => {
+                const on = hide === h || (kindNow === 'pair' && h === 'all' && hide === '2')
+                return (
+                  <button key={h} role="tab" aria-selected={on} className={on ? 'active' : ''} onClick={() => chooseHide(h)}>{label}</button>
+                )
+              })}
+            </div>
+          </>
+        )}
       </div>
+      {kind === 'path' && <PathCard path={path} levelUp={levelUp} onLevel={chooseLevel} />}
       <details className="card settings">
         <summary>Ear settings</summary>
         <Toggle label="Streaks and points" value={game} onChange={onGame} />
@@ -467,5 +543,40 @@ export function ReferenceChart({ item, range, chosen, pinyin, cursor, sketch, fo
         <span className="legend-hint">Space replays · hold & drag on the chart to loop a spot</span>
       </div>
     </>
+  )
+}
+
+/** The learning path: each step names more of a word's tones; the next opens once the current one is solid. */
+function PathCard({ path, levelUp, onLevel }: { path: PathState; levelUp: number | null; onLevel: (level: number) => void }) {
+  const stat = path.stats[path.level]
+  const pct = stat ? Math.round(stat.ema * 100) : null
+  return (
+    <section className="card path-card" aria-label="Learning path">
+      <h3>Learning path</h3>
+      <p className="muted small">
+        Start with single syllables, then name one tone in two- and three-syllable words while the others are shown, then more,
+        until you name every tone. The next step opens after 20 answers at 85% recent accuracy; you can also jump to any step.
+      </p>
+      <div className="path-steps" role="tablist" aria-label="Path steps">
+        {PATH.map((l, i) => {
+          const s = path.stats[i]
+          const done = passed(s)
+          return (
+            <button key={i} role="tab" aria-selected={i === path.level}
+              className={`path-step ${i === path.level ? 'active' : ''} ${done ? 'done' : ''} ${i > path.reached ? 'locked' : ''}`}
+              title={s ? `${s.n} answers · ${Math.round(s.ema * 100)}% recently` : 'Not started'}
+              onClick={() => onLevel(i)}>
+              <span className="small">{done ? '✓ ' : i > path.reached ? '🔒 ' : ''}{l.label}</span>
+              <span className="path-meter" aria-hidden="true"><span style={{ width: `${Math.round((done ? 1 : levelProgress(s)) * 100)}%` }} /></span>
+            </button>
+          )
+        })}
+      </div>
+      <p className="muted small">
+        Step {path.level + 1} of {PATH.length}: name {path.level === 0 ? 'the tone of single syllables' : `${PATH[path.level].label} tones`}
+        {' · '}{stat ? `${stat.n} answers, ${pct}% recently` : 'no answers yet'}
+      </p>
+      {levelUp !== null && <p className="path-up" role="status">🎉 Step passed — now: {PATH[levelUp].label}</p>}
+    </section>
   )
 }

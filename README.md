@@ -13,7 +13,11 @@ A personal Mandarin tone **production and recognition** trainer. Runs entirely i
 - **Ear** — tone *recognition*: hear a 1-, 2- or 3-syllable word (or a clip cut out of
   your own video) and pick the tone of every syllable. Practice adapts to you: weak tone
   patterns come up more often, missed items return a few trials later, and the progress
-  card lists your most-confused tone pairs. After each answer you see the speaker's real
+  card lists your most-confused tone pairs. For 2- and 3-syllable words you can choose how many
+  tones to name (1, 2 or all): the other syllables' tones are shown, and a single asked syllable is
+  outlined on the chart. *🧭 Path* turns this into a progression — single syllables → 1 of 2 → 2 of 2 →
+  1 of 3 → 2 of 3 → 3 of 3 — where the next step opens after 20 answers at 85% recent accuracy (any
+  step can be picked directly). Partial questions count toward mix-ups but not toward tone-pattern scores. After each answer you see the speaker's real
   pitch chart, and on a mistake the textbook shape of the tone you picked drawn over it.
   The chart lives in a fixed-size box, so the buttons never move when the answer appears; after a
   mistake a second tab plays your answer: the same recording with its pitch moved to the tones you
